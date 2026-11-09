@@ -1,5 +1,7 @@
 import { RNG, clamp } from "./rng.js";
 
+const NUC = "ACGT";
+
 export interface GenomeTraits {
   baseMaintenance: number;
   moveCost: number;
@@ -11,7 +13,28 @@ export interface GenomeTraits {
   memoryCapacity: number;
   maxAge: number;
   speed: number;
+  size: number;
+  strength: number;
+  aggression: number;
+  altruism: number;
+  bioluminescence: number;
 }
+
+export interface Morphotype {
+  bodyPlan: "blob" | "segmented" | "star" | "spiral" | "rays";
+  segmentCount: number;
+  limbPairs: number;
+  thickness: number;
+  curvature: number;
+  colorHue: number;
+  colorSat: number;
+  colorLum: number;
+  glowHue: number;
+  glowIntensity: number;
+  scale: number;
+}
+
+export const DNA_LENGTH = 192; // nucleotides; 64 codons worth of info
 
 export const TRAIT_DEFAULTS: GenomeTraits = {
   baseMaintenance: 0.15,
@@ -24,6 +47,11 @@ export const TRAIT_DEFAULTS: GenomeTraits = {
   memoryCapacity: 4,
   maxAge: 1200,
   speed: 1.5,
+  size: 0.8,
+  strength: 0.5,
+  aggression: 0.3,
+  altruism: 0.2,
+  bioluminescence: 0.1,
 };
 
 export const TRAIT_MIN: GenomeTraits = {
@@ -37,6 +65,11 @@ export const TRAIT_MIN: GenomeTraits = {
   memoryCapacity: 1,
   maxAge: 300,
   speed: 0.5,
+  size: 0.3,
+  strength: 0.0,
+  aggression: 0.0,
+  altruism: 0.0,
+  bioluminescence: 0.0,
 };
 
 export const TRAIT_MAX: GenomeTraits = {
@@ -50,6 +83,11 @@ export const TRAIT_MAX: GenomeTraits = {
   memoryCapacity: 12,
   maxAge: 5000,
   speed: 3.0,
+  size: 2.0,
+  strength: 1.0,
+  aggression: 1.0,
+  altruism: 1.0,
+  bioluminescence: 1.0,
 };
 
 const TRAIT_KEYS: (keyof GenomeTraits)[] = [
@@ -63,11 +101,18 @@ const TRAIT_KEYS: (keyof GenomeTraits)[] = [
   "memoryCapacity",
   "maxAge",
   "speed",
+  "size",
+  "strength",
+  "aggression",
+  "altruism",
+  "bioluminescence",
 ];
 
 export interface Genome {
   weights: Float32Array;
   traits: GenomeTraits;
+  dna: Uint8Array;
+  dnaVersion: number;
 }
 
 export interface BrainLayout {
@@ -77,9 +122,9 @@ export interface BrainLayout {
 }
 
 export const DEFAULT_LAYOUT: BrainLayout = {
-  inputs: 12,
-  hidden: 16,
-  outputs: 6,
+  inputs: 14,
+  hidden: 20,
+  outputs: 8,
 };
 
 export function weightCount(layout: BrainLayout): number {
@@ -91,6 +136,63 @@ export function weightCount(layout: BrainLayout): number {
   );
 }
 
+function randomDna(rng: RNG): Uint8Array {
+  const d = new Uint8Array(DNA_LENGTH);
+  for (let i = 0; i < DNA_LENGTH; i++) d[i] = rng.int(0, 3);
+  return d;
+}
+
+function mutateDna(dna: Uint8Array, rng: RNG, rate: number): Uint8Array {
+  const child = new Uint8Array(dna);
+  for (let i = 0; i < DNA_LENGTH; i++) {
+    if (rng.random() < rate * 4) {
+      child[i] = rng.int(0, 3);
+    }
+  }
+  return child;
+}
+
+function crossoverDna(a: Uint8Array, b: Uint8Array, rng: RNG): Uint8Array {
+  const cut = rng.int(0, DNA_LENGTH - 1);
+  const child = new Uint8Array(DNA_LENGTH);
+  for (let i = 0; i < cut; i++) child[i] = a[i];
+  for (let i = cut; i < DNA_LENGTH; i++) child[i] = b[i];
+  return child;
+}
+
+function dnaToNumber(dna: Uint8Array, start: number, len: number): number {
+  let v = 0;
+  for (let i = 0; i < len; i++) {
+    v = (v << 2) | dna[start + i];
+  }
+  const max = (1 << (2 * len)) - 1;
+  return max === 0 ? 0 : v / max;
+}
+
+export function dnaToMorphotype(dna: Uint8Array): Morphotype {
+  const bpIdx = Math.floor(dnaToNumber(dna, 0, 4) * 4);
+  const bodyPlans: ("blob" | "segmented" | "star" | "spiral" | "rays")[] = [
+    "blob",
+    "segmented",
+    "star",
+    "spiral",
+    "rays",
+  ];
+  return {
+    bodyPlan: bodyPlans[bpIdx],
+    segmentCount: 2 + Math.floor(dnaToNumber(dna, 4, 4) * 6),
+    limbPairs: Math.floor(dnaToNumber(dna, 8, 4) * 4),
+    thickness: 0.4 + dnaToNumber(dna, 12, 4) * 0.8,
+    curvature: -1 + dnaToNumber(dna, 16, 4) * 2,
+    colorHue: Math.floor(dnaToNumber(dna, 20, 6) * 360),
+    colorSat: 40 + dnaToNumber(dna, 26, 6) * 50,
+    colorLum: 30 + dnaToNumber(dna, 32, 6) * 40,
+    glowHue: Math.floor(dnaToNumber(dna, 38, 6) * 360),
+    glowIntensity: dnaToNumber(dna, 44, 6),
+    scale: 0.5 + dnaToNumber(dna, 50, 6),
+  };
+}
+
 export function createRandomGenome(
   rng: RNG,
   layout: BrainLayout = DEFAULT_LAYOUT,
@@ -100,6 +202,8 @@ export function createRandomGenome(
   for (let i = 0; i < w; i++) {
     weights[i] = rng.range(-1, 1);
   }
+  const dna = randomDna(rng);
+  const morpho = dnaToMorphotype(dna);
   const traits: GenomeTraits = {
     baseMaintenance: rng.range(0.05, 0.3),
     moveCost: rng.range(0.02, 0.1),
@@ -111,15 +215,48 @@ export function createRandomGenome(
     memoryCapacity: rng.int(2, 8),
     maxAge: rng.range(600, 1500),
     speed: rng.range(0.8, 2.0),
+    size: morpho.scale,
+    strength: rng.range(0.0, 0.6),
+    aggression: rng.range(0.0, 0.5),
+    altruism: rng.range(0.0, 0.5),
+    bioluminescence: morpho.glowIntensity * 0.5 + 0.1,
   };
-  return { weights, traits };
+  return { weights, traits, dna, dnaVersion: 1 };
 }
 
 export function cloneGenome(g: Genome): Genome {
   return {
     weights: new Float32Array(g.weights),
     traits: { ...g.traits },
+    dna: new Uint8Array(g.dna),
+    dnaVersion: g.dnaVersion,
   };
+}
+
+export function crossoverGenome(a: Genome, b: Genome, rng: RNG): Genome {
+  const child = cloneGenome(a);
+  const n = Math.min(a.weights.length, b.weights.length);
+  const cut = rng.int(0, n - 1);
+  for (let i = cut; i < n; i++) {
+    child.weights[i] = b.weights[i];
+  }
+  child.dna = crossoverDna(a.dna, b.dna, rng);
+  const morpho = dnaToMorphotype(child.dna);
+  // trait blending: each trait inherited from one parent or averaged
+  for (const key of TRAIT_KEYS) {
+    const r = rng.random();
+    if (r < 0.45) {
+      child.traits[key] = a.traits[key];
+    } else if (r < 0.9) {
+      child.traits[key] = b.traits[key];
+    } else {
+      child.traits[key] = (a.traits[key] + b.traits[key]) * 0.5;
+    }
+  }
+  child.traits.size = morpho.scale;
+  child.traits.bioluminescence = morpho.glowIntensity * 0.5 + 0.1;
+  child.dnaVersion = a.dnaVersion + b.dnaVersion + 1;
+  return child;
 }
 
 export function mutateGenome(parent: Genome, rng: RNG): Genome {
@@ -130,6 +267,8 @@ export function mutateGenome(parent: Genome, rng: RNG): Genome {
       child.weights[i] += rng.gauss() * 0.3 * mr;
     }
   }
+  child.dna = mutateDna(child.dna, rng, mr);
+  const morpho = dnaToMorphotype(child.dna);
   for (const key of TRAIT_KEYS) {
     if (rng.random() < mr) {
       const lo = TRAIT_MIN[key];
@@ -147,6 +286,9 @@ export function mutateGenome(parent: Genome, rng: RNG): Genome {
       }
     }
   }
+  child.traits.size = morpho.scale;
+  child.traits.bioluminescence = morpho.glowIntensity * 0.5 + 0.1;
+  child.dnaVersion += 1;
   return child;
 }
 
@@ -159,5 +301,49 @@ export function genomeDistance(a: Genome, b: Genome): number {
   for (const key of TRAIT_KEYS) {
     d += Math.abs(a.traits[key] - b.traits[key]);
   }
-  return d / (n + TRAIT_KEYS.length);
+  // DNA distance (Hamming normalized)
+  let dnaD = 0;
+  const dn = Math.min(a.dna.length, b.dna.length);
+  for (let i = 0; i < dn; i++) {
+    if (a.dna[i] !== b.dna[i]) dnaD += 1;
+  }
+  d += dnaD / dn;
+  return d / (n + TRAIT_KEYS.length + 1);
+}
+
+export function genomeHashColor(g: Genome): string {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < g.weights.length; i++) {
+    const b = new Float32Array([g.weights[i]]);
+    const dv = new DataView(b.buffer);
+    h ^= dv.getUint32(0, true);
+    h = (h * 16777619) >>> 0;
+  }
+  for (const key of TRAIT_KEYS) {
+    const v = g.traits[key];
+    const b = new Float32Array([v]);
+    const dv = new DataView(b.buffer);
+    h ^= dv.getUint32(0, true);
+    h = (h * 16777619) >>> 0;
+  }
+  for (let i = 0; i < g.dna.length; i += 4) {
+    h ^= g.dna[i];
+    h = (h * 16777619) >>> 0;
+  }
+  const hue = h % 360;
+  const sat = 50 + (h % 40);
+  return `hsl(${hue},${sat}%,55%)`;
+}
+
+export function dnaString(dna: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < dna.length; i++) s += NUC[dna[i]];
+  return s;
+}
+
+export function dnaFromString(s: string): Uint8Array {
+  const d = new Uint8Array(Math.min(s.length, DNA_LENGTH));
+  const m: Record<string, number> = { A: 0, C: 1, G: 2, T: 3 };
+  for (let i = 0; i < d.length; i++) d[i] = m[s[i]] ?? 0;
+  return d;
 }

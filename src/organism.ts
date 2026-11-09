@@ -2,7 +2,7 @@ import { RNG, clamp } from "./rng.js";
 import { Genome, DEFAULT_LAYOUT, BrainLayout } from "./genome.js";
 import { Brain } from "./brain.js";
 import { World } from "./world.js";
-import { mutateGenome } from "./genome.js";
+import { mutateGenome, crossoverGenome } from "./genome.js";
 
 export interface Percept {
   inputs: Float32Array;
@@ -16,8 +16,12 @@ export interface OrganismState {
   energy: number;
   age: number;
   maxAge: number;
+  generation: number;
   dead: boolean;
   genome: Genome;
+  parentId: number | null;
+  size: number;
+  strength: number;
 }
 
 export interface ReproductionEvent {
@@ -25,6 +29,16 @@ export interface ReproductionEvent {
   childId: number;
   x: number;
   y: number;
+  sexual: boolean;
+  otherParentId?: number;
+}
+
+export interface AttackEvent {
+  attackerId: number;
+  victimId: number;
+  x: number;
+  y: number;
+  energyGained: number;
 }
 
 export class Organism {
@@ -33,10 +47,12 @@ export class Organism {
   y: number;
   energy: number;
   age = 0;
+  generation = 1;
   dead = false;
   readonly genome: Genome;
   readonly brain: Brain;
   readonly memory: Float32Array;
+  readonly parentId: number | null;
   private memoryCount = 0;
   private memoryWriteIdx = 0;
   private lastPercept: Float32Array | null = null;
@@ -48,6 +64,8 @@ export class Organism {
     y: number,
     energy: number,
     genome: Genome,
+    parentId: number | null = null,
+    generation = 1,
     layout: BrainLayout = DEFAULT_LAYOUT,
   ) {
     this.id = id;
@@ -55,6 +73,8 @@ export class Organism {
     this.y = y;
     this.energy = energy;
     this.genome = genome;
+    this.parentId = parentId;
+    this.generation = generation;
     this.brain = new Brain(genome, layout);
     this.memory = new Float32Array(Math.max(1, genome.traits.memoryCapacity));
   }
@@ -78,6 +98,7 @@ export class Organism {
     let nearestOrgDx = 0;
     let nearestOrgDy = 0;
     let nearestOrgEnergy = 0;
+    let nearestOrgSize = 0;
 
     world.forNearby(
       this.x,
@@ -101,13 +122,14 @@ export class Organism {
             nearestOrgDx = dx / Math.max(1, vision);
             nearestOrgDy = dy / Math.max(1, vision);
             nearestOrgEnergy = energy / maxE;
+            nearestOrgSize = Math.min(1, energy / 100);
           }
         }
       },
     );
 
     const area = Math.PI * vision * vision;
-    const inputs = new Float32Array(12);
+    const inputs = new Float32Array(14);
     inputs[0] = clamp(this.energy / maxE, 0, 1);
     inputs[1] = clamp(this.age / t.maxAge, 0, 1);
     inputs[2] = clamp(cellFood, 0, 1);
@@ -120,21 +142,28 @@ export class Organism {
     inputs[9] = clamp(orgVision / Math.max(1, area / 4), 0, 1);
     inputs[10] = this.memoryMean();
     inputs[11] = world.pheromoneAt(fx, fy);
+    inputs[12] = nearestOrgSize;
+    inputs[13] = t.bioluminescence;
 
     this.lastPercept = inputs;
     return inputs;
   }
 
   think(inputs: Float32Array): Float32Array {
-    const out = new Float32Array(6);
+    const out = new Float32Array(8);
     this.brain.forward(inputs, out);
     this.lastOutput = out;
     return out;
   }
 
-  act(outputs: Float32Array, world: World, rng: RNG): ReproductionEvent[] {
+  act(
+    outputs: Float32Array,
+    world: World,
+    rng: RNG,
+  ): { events: ReproductionEvent[]; attacks: AttackEvent[] } {
     const t = this.genome.traits;
     const events: ReproductionEvent[] = [];
+    const attacks: AttackEvent[] = [];
 
     const dx = outputs[0];
     const dy = outputs[1];
@@ -142,19 +171,21 @@ export class Organism {
     const reproduce = outputs[3];
     const signal = outputs[4];
     const memoryWrite = outputs[5];
+    const attack = outputs[6];
+    const light = outputs[7];
 
     const moveDist = Math.hypot(dx, dy) * t.speed;
     const nx = this.clampPos(this.x + dx * t.speed, world.width);
     const ny = this.clampPos(this.y + dy * t.speed, world.height);
-    this.energy -= t.moveCost * moveDist;
+    this.energy -= t.moveCost * moveDist * (0.5 + t.size);
     this.x = nx;
     this.y = ny;
 
-    if (signal > 0.5) {
+    if (light > 0.5) {
       const fx = Math.floor(this.x);
       const fy = Math.floor(this.y);
-      world.depositPheromone(fx, fy, 1.0);
-      this.energy -= 0.5;
+      world.depositPheromone(fx, fy, t.bioluminescence * 0.5);
+      this.energy -= 0.3 * t.bioluminescence;
     }
 
     if (consume > 0.2) {
@@ -172,6 +203,37 @@ export class Organism {
       this.memoryWrite(clamp(this.energy / 200, 0, 1));
     }
 
+    if (attack > 0.6) {
+      world.forNearby(
+        this.x,
+        this.y,
+        Math.max(1, t.size * 2),
+        (ox, oy, kind, energy) => {
+          if (kind === "organism") {
+            const d = Math.hypot(ox - this.x, oy - this.y);
+            if (d < 1.2 && energy > 0) {
+              const victimSize = Math.min(1, energy / 100);
+              const killChance =
+                t.strength * 0.6 +
+                (t.size - victimSize) * 0.3 +
+                t.aggression * 0.1;
+              if (rng.random() < killChance) {
+                const gain = energy * 0.5;
+                this.energy += gain;
+                attacks.push({
+                  attackerId: this.id,
+                  victimId: -1,
+                  x: ox,
+                  y: oy,
+                  energyGained: gain,
+                });
+              }
+            }
+          }
+        },
+      );
+    }
+
     if (
       reproduce > 0.8 &&
       this.energy > t.reproductionThreshold &&
@@ -184,6 +246,7 @@ export class Organism {
         childEnergy,
         rng,
         world.nextOrganismId(),
+        false,
       );
       world.addOrganism(child);
       const cx = this.clampPos(
@@ -201,15 +264,17 @@ export class Organism {
         childId: child.id,
         x: cx,
         y: cy,
+        sexual: false,
       });
     }
 
-    return events;
+    return { events, attacks };
   }
 
   tickMetabolism(): void {
     const t = this.genome.traits;
-    this.energy -= t.baseMaintenance + t.thinkCost * this.brain.hidden;
+    const sizePenalty = t.size * 0.1;
+    this.energy -= t.baseMaintenance + t.thinkCost * this.brain.hidden + sizePenalty;
     this.age += 1;
     if (this.energy <= 0 || this.age >= t.maxAge) {
       this.dead = true;
@@ -251,16 +316,50 @@ export class Organism {
     childEnergy: number,
     rng: RNG,
     childId: number,
+    sexual = false,
+    otherParent: Organism | null = null,
+    generationOffset = 1,
   ): Organism {
-    const childGenome = mutateGenome(parent.genome, rng);
+    let childGenome: Genome;
+    if (sexual && otherParent) {
+      childGenome = crossoverGenome(parent.genome, otherParent.genome, rng);
+      childGenome = mutateGenome(childGenome, rng);
+    } else {
+      childGenome = mutateGenome(parent.genome, rng);
+    }
+    const generation =
+      Math.max(parent.generation, otherParent?.generation ?? 0) +
+      generationOffset;
     return new Organism(
       childId,
       parent.x,
       parent.y,
       childEnergy,
       childGenome,
+      parent.id,
+      generation,
       DEFAULT_LAYOUT,
     );
+  }
+
+  static sexualReproduce(
+    a: Organism,
+    b: Organism,
+    rng: RNG,
+    childId: number,
+  ): Organism {
+    const childEnergy = (a.genome.traits.reproductionCost +
+      b.genome.traits.reproductionCost) *
+      0.5;
+    const child = Organism.reproduce(
+      a,
+      childEnergy,
+      rng,
+      childId,
+      true,
+      b,
+    );
+    return child;
   }
 
   getState(): OrganismState {
@@ -271,8 +370,12 @@ export class Organism {
       energy: this.energy,
       age: this.age,
       maxAge: this.genome.traits.maxAge,
+      generation: this.generation,
       dead: this.dead,
       genome: this.genome,
+      parentId: this.parentId,
+      size: this.genome.traits.size,
+      strength: this.genome.traits.strength,
     };
   }
 }
