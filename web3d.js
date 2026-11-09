@@ -82,32 +82,49 @@ let renderer, scene, camera, controls;
 let grid, foodMesh;
 let organGroups = new Map(); // morphotypeKey -> InstancedMesh group data
 let bondLines = null; // LineSegments showing colony structure
+let webglFailed = false;
+
+const errOverlay = document.createElement("div");
+errOverlay.style.cssText = "position:absolute;inset:0;background:#06080c;color:#fff;display:none;align-items:center;justify-content:center;z-index:60;font-family:sans-serif;flex-direction:column;gap:10px;padding:20px;text-align:center;";
+errOverlay.innerHTML = `<div style="color:#ef4444;font-weight:700">WebGL unavailable on this device</div><div style="color:#8a93a5;font-size:13px">The 3D ecosystem could not initialize. Try a different browser or device.</div>`;
+document.body.appendChild(errOverlay);
 
 function initThree() {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-  renderer.shadowMap.enabled = true;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+  } catch (e) {
+    webglFailed = true;
+    errOverlay.style.display = "flex";
+    return;
+  }
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x05070a);
-  scene.fog = new THREE.FogExp2(0x05070a, 0.015);
+  scene.background = new THREE.Color(0x06080c);
+  scene.fog = new THREE.FogExp2(0x06080c, 0.012);
 
-  camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.5, 400);
-  camera.position.set(100, 80, 100);
+  camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / Math.max(canvas.clientHeight, 1), 0.5, 400);
+  camera.position.set(90, 60, 90);
 
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.05;
-  controls.minDistance = 10;
-  controls.maxDistance = 350;
+  try {
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 8;
+    controls.maxDistance = 300;
+  } catch (e) {
+    controls = null;
+  }
 
-  const amb = new THREE.AmbientLight(0xffffff, 0.4);
+  const amb = new THREE.AmbientLight(0xffffff, 0.5);
   scene.add(amb);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-  dir.position.set(60, 80, 60);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+  dir.position.set(50, 70, 50);
   dir.castShadow = true;
-  dir.shadow.mapSize.set(2048, 2048);
+  dir.shadow.mapSize.set(512, 512);
   scene.add(dir);
 
   grid = new THREE.GridHelper(240, 48, 0x1a1f29, 0x0f121c);
@@ -136,7 +153,8 @@ function initThree() {
 }
 
 function onResize() {
-  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (webglFailed || !renderer || !camera) return;
+  const w = canvas.clientWidth, h = Math.max(canvas.clientHeight, 1);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
@@ -418,9 +436,19 @@ function animate(now) {
   for (let i = 0; i < steps; i++) sim.step();
   acc -= steps * msPerTick;
 
+  if (webglFailed) {
+    requestAnimationFrame(animate);
+    return;
+  }
+
   updateOrganisms();
-  controls.update();
-  renderer.render(scene, camera);
+  controls?.update();
+  try {
+    renderer.render(scene, camera);
+  } catch (e) {
+    webglFailed = true;
+    errOverlay.style.display = "flex";
+  }
 
   if (frame % 6 === 0) {
     drawHud();
@@ -453,9 +481,26 @@ function bindUI() {
 }
 
 function main() {
-  initThree();
-  createSim();
-  bindUI();
+  try {
+    initThree();
+    if (!webglFailed) {
+      createSim();
+      bindUI();
+    } else {
+      // still wire controls so Reset can retry
+      bindUI();
+      els.reset.addEventListener("click", () => {
+        errOverlay.style.display = "none";
+        webglFailed = false;
+        initThree();
+        if (!webglFailed) createSim();
+      });
+    }
+  } catch (e) {
+    webglFailed = true;
+    errOverlay.style.display = "flex";
+    bindUI();
+  }
   last = performance.now();
   requestAnimationFrame((t) => { last = t; animate(t); });
 }
