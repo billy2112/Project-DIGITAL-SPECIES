@@ -64,9 +64,9 @@ const MAX_STEPS = 8;
 
 const CFG = {
   seed: Date.now(),
-  pop: 300,
-  worldW: 60,
-  worldH: 60,
+  pop: 100,
+  worldW: 40,
+  worldH: 40,
 };
 
 const ROLE_COLORS = {
@@ -426,38 +426,64 @@ function onPointerDown(e) {
 
 function animate(now) {
   requestAnimationFrame(animate);
-  const dt = Math.min(now - last, 200);
-  last = now;
-  acc += dt;
-  const cap = MAX_STEPS * msPerTick;
-  if (acc > cap) acc = cap;
-  let steps = running ? Math.floor(acc / msPerTick) : 0;
-  if (steps > MAX_STEPS) steps = MAX_STEPS;
-  for (let i = 0; i < steps; i++) sim.step();
-  acc -= steps * msPerTick;
-
   if (webglFailed) {
-    requestAnimationFrame(animate);
     return;
   }
-
-  updateOrganisms();
-  controls?.update();
   try {
-    renderer.render(scene, camera);
-  } catch (e) {
-    webglFailed = true;
-    errOverlay.style.display = "flex";
-  }
+    const dt = Math.min(now - last, 200);
+    last = now;
+    acc += dt;
+    const cap = MAX_STEPS * msPerTick;
+    if (acc > cap) acc = cap;
+    let steps = running ? Math.floor(acc / msPerTick) : 0;
+    if (steps > MAX_STEPS) steps = MAX_STEPS;
+    for (let i = 0; i < steps; i++) {
+      try { sim.step(); } catch (e) {
+        showError("Simulation error: " + (e && e.message ? e.message : String(e)));
+        return;
+      }
+    }
+    acc -= steps * msPerTick;
 
-  if (frame % 6 === 0) {
-    drawHud();
-    drawInspector();
+    updateOrganisms();
+    controls?.update();
+    renderer.render(scene, camera);
+
+    if (frame % 6 === 0) {
+      drawHud();
+      drawInspector();
+    }
+    frame++;
+  } catch (e) {
+    showError("Render error: " + (e && e.message ? e.message : String(e)));
   }
-  frame++;
 }
 
+function showError(msg) {
+  webglFailed = true;
+  errOverlay.innerHTML = `<div style="color:#ef4444;font-weight:700">Simulation error</div><div style="color:#8a93a5;font-size:12px;word-wrap:break-word;max-width:300px">${msg}</div><button style="margin-top:10px;padding:8px 14px;border-radius:8px;border:none;background:#22c55e;color:#000;font-weight:700;cursor:pointer">Reset</button>`;
+  errOverlay.style.display = "flex";
+  const btn = errOverlay.querySelector("button");
+  if (btn) btn.onclick = () => {
+    errOverlay.style.display = "none";
+    webglFailed = false;
+    running = true;
+    last = performance.now();
+    acc = 0;
+    frame = 0;
+    initThree();
+    if (!webglFailed) {
+      createSim();
+      bindUI();
+    }
+  };
+}
+
+let uiBound = false;
+
 function bindUI() {
+  if (uiBound) return;
+  uiBound = true;
   els.play.addEventListener("click", () => {
     running = !running;
     els.play.textContent = running ? "Pause" : "Resume";
@@ -484,22 +510,19 @@ function main() {
   try {
     initThree();
     if (!webglFailed) {
-      createSim();
+      try { createSim(); } catch (e) {
+        showError("Startup error: " + (e && e.message ? e.message : String(e)));
+        return;
+      }
       bindUI();
     } else {
-      // still wire controls so Reset can retry
-      bindUI();
-      els.reset.addEventListener("click", () => {
-        errOverlay.style.display = "none";
-        webglFailed = false;
-        initThree();
-        if (!webglFailed) createSim();
-      });
+      // WebGL init failed: show error with retry button
+      showError("WebGL unavailable on this device. Try another browser.");
     }
   } catch (e) {
-    webglFailed = true;
-    errOverlay.style.display = "flex";
+    showError("Init error: " + (e && e.message ? e.message : String(e)));
     bindUI();
+    return;
   }
   last = performance.now();
   requestAnimationFrame((t) => { last = t; animate(t); });
