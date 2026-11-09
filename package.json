@@ -1,0 +1,30 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "Project DIGITAL SPECIES — Artificial Life Simulator",
+  "main": "index.js",
+  "scripts": {
+    "test": "tsx test/index.ts",
+    "typecheck": "tsc --noEmit",
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "sim": "tsx src/index.ts --live --ticks 2000 --population 500"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/billy2112/Project-DIGITAL-SPECIES.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/billy2112/Project-DIGITAL-SPECIES/issues"
+  },
+  "homepage": "https://github.com/billy2112/Project-DIGITAL-SPECIES#readme",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
