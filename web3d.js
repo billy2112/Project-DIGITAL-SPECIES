@@ -58,6 +58,7 @@ let running = true;
 let selectedId = null;
 let last = performance.now();
 let acc = 0;
+let frame = 0;
 let msPerTick = 30;
 const MAX_STEPS = 8;
 
@@ -269,14 +270,21 @@ function updateOrganisms() {
   }
 
   // colony bonds: lines from centroid to each member
+  const orgById = new Map();
+  for (const o of state.organisms) orgById.set(o.id, o);
+  const MAX_BONDS = 2048;
+  let bondCount = 0;
   for (const c of sim.colonies.values()) {
     if (c.dead || c.memberIds.length === 0) continue;
     const cx = c.x, cy = c.y;
     for (const mid of c.memberIds) {
-      const o = sim.organisms.find((x) => x.id === mid);
+      if (bondCount >= MAX_BONDS) break;
+      const o = orgById.get(mid);
       if (!o || o.dead) continue;
       bondPos.push(cx, 0.45, cy, o.x, 0.45, o.y);
+      bondCount++;
     }
+    if (bondCount >= MAX_BONDS) break;
   }
 
   organGroups.forEach((g) => {
@@ -312,11 +320,15 @@ function updateOrganisms() {
   foodMesh.instanceMatrix.needsUpdate = true;
   foodMesh.instanceColor.needsUpdate = true;
 
-  // update bond lines
-  const lineGeo = new THREE.BufferGeometry();
-  lineGeo.setAttribute("position", new THREE.Float32BufferAttribute(bondPos, 3));
-  lineGeo.computeBoundingSphere();
-  bondLines.geometry = lineGeo;
+  // update bond lines (reuse buffer to avoid GC pressure)
+  const linePos = bondLines.geometry.attributes.position;
+  const needed = bondPos.length;
+  if (!linePos || linePos.count * 3 < needed) {
+    bondLines.geometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(needed), 3));
+  }
+  const arr = bondLines.geometry.attributes.position.array;
+  for (let i = 0; i < needed; i++) arr[i] = bondPos[i];
+  bondLines.geometry.setDrawRange(0, needed);
   bondLines.geometry.attributes.position.needsUpdate = true;
 }
 
@@ -410,8 +422,11 @@ function animate(now) {
   controls.update();
   renderer.render(scene, camera);
 
-  drawHud();
-  drawInspector();
+  if (frame % 6 === 0) {
+    drawHud();
+    drawInspector();
+  }
+  frame++;
 }
 
 function bindUI() {
