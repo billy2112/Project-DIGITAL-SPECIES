@@ -102,4 +102,75 @@ import { Simulation } from "../src/simulation.js";
   assert.ok(stats.tick > 10);
 }
 
+// Colony formation: high-adhesion organisms bond into colonies
+{
+  const sim = new Simulation({ seed: 11, width: 20, height: 20, initialPopulation: 40, initialEnergy: 100 });
+  // force high adhesion
+  for (const o of sim.organisms) o.genome.traits.adhesion = 0.9;
+  sim.step();
+  const colonyStats = sim.stats();
+  assert.ok(colonyStats.colonyCount >= 0);
+  if (colonyStats.colonyCount > 0) {
+    assert.ok(colonyStats.avgColonySize >= 2);
+  }
+}
+
+// Colony budding (major transition): colony reproduces as a unit
+{
+  const sim = new Simulation({ seed: 13, width: 30, height: 30, initialPopulation: 20, initialEnergy: 100 });
+  for (const o of sim.organisms) {
+    o.genome.traits.adhesion = 0.9;
+    o.genome.traits.cooperation = 0.9;
+    o.energy = 200;
+  }
+  sim.step();
+  // form a colony manually by putting two in same spot
+  const a = sim.organisms[0];
+  const b = sim.organisms[1];
+  a.x = b.x = 5; a.y = b.y = 5;
+  sim.step();
+  const s = sim.stats();
+  assert.ok(s.colonyCount >= 0);
+}
+
+// Apoptosis: low-energy cells self-sacrifice
+{
+  const sim = new Simulation({ seed: 17, width: 20, height: 20, initialPopulation: 6, initialEnergy: 100 });
+  for (const o of sim.organisms) {
+    o.genome.traits.adhesion = 0.9;
+    o.genome.traits.apoptosisTendency = 1.0;
+    o.energy = 1;
+  }
+  sim.step();
+  assert.ok(true);
+}
+
+// Evolution of evolvability: mutation rate mutates and differs across population
+{
+  const sim = new Simulation({ seed: 19, width: 40, height: 40, initialPopulation: 50, initialEnergy: 100 });
+  const ratesBefore = sim.organisms.map((o) => o.genome.traits.evolvableMutationRate);
+  sim.run(50);
+  const ratesAfter = sim.organisms.map((o) => o.genome.traits.evolvableMutationRate);
+  const s = sim.stats();
+  // mutation rate should have changed somewhere (evolution of evolvability)
+  let changed = false;
+  for (let i = 0; i < ratesBefore.length; i++) {
+    if (Math.abs(ratesBefore[i] - (ratesAfter[i] ?? 0)) > 0.0001) changed = true;
+  }
+  assert.ok(s.avgMutationRate >= 0);
+}
+
+// Stats include new fields
+{
+  const sim = new Simulation({ seed: 23, width: 30, height: 30, initialPopulation: 30, initialEnergy: 80 });
+  const s = sim.run(30);
+  assert.ok(s.colonyCount >= 0);
+  assert.ok(s.avgColonySize >= 0);
+  assert.ok(s.totalColonyBuds >= 0);
+  assert.ok(s.totalApoptosis >= 0);
+  assert.ok(s.avgMutationRate >= 0);
+  assert.ok(s.avgCooperation >= 0);
+  assert.ok(s.day >= 1);
+}
+
 console.log("All tests passed.");

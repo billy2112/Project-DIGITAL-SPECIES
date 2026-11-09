@@ -7,7 +7,6 @@ import {
   dnaString,
 } from "./dist/dna3d.js";
 import { Simulation } from "./dist/simulation.js";
-import { genomeHashColor } from "./dist/genome.js";
 
 // ---- DOM ----
 const canvas = document.getElementById("gl-canvas");
@@ -20,18 +19,26 @@ const els = {
   speed: document.getElementById("inp-speed"),
   tick: document.getElementById("stat-tick"),
   popStat: document.getElementById("stat-pop"),
+  colonies: document.getElementById("stat-colonies"),
   births: document.getElementById("stat-births"),
   sexual: document.getElementById("stat-sexual"),
+  buds: document.getElementById("stat-buds"),
   deaths: document.getElementById("stat-deaths"),
+  apoptosis: document.getElementById("stat-apoptosis"),
   kills: document.getElementById("stat-kills"),
+  colonyDeaths: document.getElementById("stat-colony-deaths"),
   species: document.getElementById("stat-species"),
   day: document.getElementById("stat-day"),
   energy: document.getElementById("stat-energy"),
   size: document.getElementById("stat-size"),
   strength: document.getElementById("stat-strength"),
   aggression: document.getElementById("stat-aggression"),
+  cooperation: document.getElementById("stat-cooperation"),
+  mutation: document.getElementById("stat-mutation"),
   inspector: document.getElementById("inspector"),
   selId: document.getElementById("sel-id"),
+  selColony: document.getElementById("sel-colony"),
+  selRole: document.getElementById("sel-role"),
   selDna: document.getElementById("sel-dna"),
   selEnergy: document.getElementById("sel-energy"),
   selAge: document.getElementById("sel-age"),
@@ -41,6 +48,7 @@ const els = {
   selAggression: document.getElementById("sel-aggression"),
   selAltruism: document.getElementById("sel-altruism"),
   selBio: document.getElementById("sel-bio"),
+  selMutation: document.getElementById("sel-mutation"),
   selPlan: document.getElementById("sel-plan"),
   paused: document.getElementById("overlay-paused"),
 };
@@ -60,16 +68,19 @@ const CFG = {
   worldH: 60,
 };
 
+const ROLE_COLORS = {
+  free: 0x888888,
+  gatherer: 0x22c55e,
+  reproducer: 0xf59e0b,
+  defender: 0xef4444,
+  signal: 0x06b6d4,
+};
+
 // ---- Three.js ----
 let renderer, scene, camera, controls;
 let grid, foodMesh;
 let organGroups = new Map(); // morphotypeKey -> InstancedMesh group data
-
-function hslStringToRgb(hsl) {
-  const m = hsl.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-  if (!m) return new THREE.Color(0xffffff);
-  return new THREE.Color().setHSL(Number(m[1]) / 360, Number(m[2]) / 100, Number(m[3]) / 100);
-}
+let bondLines = null; // LineSegments showing colony structure
 
 function initThree() {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -82,37 +93,42 @@ function initThree() {
   scene.fog = new THREE.FogExp2(0x05070a, 0.015);
 
   camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.5, 400);
-  camera.position.set(90, 70, 90);
+  camera.position.set(100, 80, 100);
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
   controls.minDistance = 10;
-  controls.maxDistance = 300;
+  controls.maxDistance = 350;
 
   const amb = new THREE.AmbientLight(0xffffff, 0.4);
   scene.add(amb);
   const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-  dir.position.set(50, 70, 50);
+  dir.position.set(60, 80, 60);
   dir.castShadow = true;
   dir.shadow.mapSize.set(2048, 2048);
   scene.add(dir);
 
-  grid = new THREE.GridHelper(220, 44, 0x1a1f29, 0x0f121c);
+  grid = new THREE.GridHelper(240, 48, 0x1a1f29, 0x0f121c);
   grid.position.y = 0.01;
   scene.add(grid);
 
   const foodGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
   const foodMat = new THREE.MeshStandardMaterial({
-    color: 0x22c55e,
-    emissive: 0x113311,
-    emissiveIntensity: 0.5,
+    color: 0x22c55e, emissive: 0x113311, emissiveIntensity: 0.5,
   });
   foodMesh = new THREE.InstancedMesh(foodGeo, foodMat, 8192);
   foodMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   foodMesh.castShadow = true;
   foodMesh.receiveShadow = true;
   scene.add(foodMesh);
+
+  bondLines = new THREE.LineSegments(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
+  );
+  bondLines.frustumCulled = false;
+  scene.add(bondLines);
 
   window.addEventListener("resize", onResize);
   canvas.addEventListener("pointerdown", onPointerDown);
@@ -198,9 +214,7 @@ function getGroup(key, morpho) {
   const parts = generateModel(morpho, 60, 1);
   const geometry = buildGeometry(parts);
   const mat = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.6,
-    metalness: 0.1,
+    vertexColors: true, roughness: 0.6, metalness: 0.1,
   });
   const mesh = new THREE.InstancedMesh(geometry, mat, 8192);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -212,15 +226,24 @@ function getGroup(key, morpho) {
   return g;
 }
 
+function colonyColor(colonyId) {
+  let h = 2166136261 >>> 0;
+  const s = String(colonyId);
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h * 16777619) >>> 0;
+  }
+  return new THREE.Color().setHSL(h % 360, 0.5, 0.55);
+}
+
 function updateOrganisms() {
   organGroups.forEach((g) => (g.count = 0));
   const foodInstances = [];
   const state = sim.getState();
   const W = sim.world.width;
-  const H = sim.world.height;
 
   const dummy = new THREE.Object3D();
-  const c = new THREE.Color();
+  const bondPos = [];
 
   for (const org of state.organisms) {
     const morpho = dnaToMorphotype(org.genome.dna);
@@ -234,19 +257,26 @@ function updateOrganisms() {
     dummy.scale.set(scale, scale, scale);
     dummy.updateMatrix();
     g.matrices[idx] = dummy.matrix.elements.slice();
-    c.set(genomeHashColor(org.genome));
-    g.colors[idx] = [c.r, c.g, c.b];
+
+    // role-based color, tinted by colony hue for group identity
+    const rc = ROLE_COLORS[org.role] ?? 0xffffff;
+    let base = new THREE.Color(rc);
+    if (org.colonyId !== null) {
+      const ch = colonyColor(org.colonyId);
+      base.lerp(ch, 0.4);
+    }
+    g.colors[idx] = [base.r, base.g, base.b];
   }
 
-  const snap = state.snapshot;
-  const food = snap.food;
-  for (let i = 0; i < food.length; i++) {
-    const f = food[i];
-    if (f <= 0.5) continue;
-    const y = (i / W) | 0;
-    const x = i % W;
-    const br = Math.min(1, f / 100);
-    foodInstances.push({ x: x + 0.5, y: y + 0.5, s: 0.3 + 0.4 * br, br });
+  // colony bonds: lines from centroid to each member
+  for (const c of sim.colonies.values()) {
+    if (c.dead || c.memberIds.length === 0) continue;
+    const cx = c.x, cy = c.y;
+    for (const mid of c.memberIds) {
+      const o = sim.organisms.find((x) => x.id === mid);
+      if (!o || o.dead) continue;
+      bondPos.push(cx, 0.45, cy, o.x, 0.45, o.y);
+    }
   }
 
   organGroups.forEach((g) => {
@@ -281,6 +311,13 @@ function updateOrganisms() {
   }
   foodMesh.instanceMatrix.needsUpdate = true;
   foodMesh.instanceColor.needsUpdate = true;
+
+  // update bond lines
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute("position", new THREE.Float32BufferAttribute(bondPos, 3));
+  lineGeo.computeBoundingSphere();
+  bondLines.geometry = lineGeo;
+  bondLines.geometry.attributes.position.needsUpdate = true;
 }
 
 function drawHud() {
@@ -288,16 +325,22 @@ function drawHud() {
   const st = sim.stats();
   els.tick.textContent = st.tick.toLocaleString();
   els.popStat.textContent = st.population.toLocaleString();
+  els.colonies.textContent = st.colonyCount.toLocaleString();
   els.births.textContent = st.totalBirths.toLocaleString();
   els.sexual.textContent = st.totalSexualBirths.toLocaleString();
+  els.buds.textContent = st.totalColonyBuds.toLocaleString();
   els.deaths.textContent = st.totalDeaths.toLocaleString();
+  els.apoptosis.textContent = st.totalApoptosis.toLocaleString();
   els.kills.textContent = st.totalKills.toLocaleString();
+  els.colonyDeaths.textContent = st.totalColonyDeaths.toLocaleString();
   els.species.textContent = st.speciesCount.toLocaleString();
   els.day.textContent = st.day.toLocaleString();
   els.energy.textContent = st.avgEnergy.toFixed(1);
   els.size.textContent = st.avgSize.toFixed(2);
   els.strength.textContent = st.avgStrength.toFixed(2);
   els.aggression.textContent = st.avgAggression.toFixed(2);
+  els.cooperation.textContent = st.avgCooperation.toFixed(2);
+  els.mutation.textContent = st.avgMutationRate.toFixed(4);
 }
 
 function drawInspector() {
@@ -310,7 +353,10 @@ function drawInspector() {
   els.inspector.classList.remove("empty");
   const t = org.genome.traits;
   const morpho = dnaToMorphotype(org.genome.dna);
+  const colony = org.colonyId !== null ? sim.colonies.get(org.colonyId) : null;
   els.selId.textContent = org.id;
+  els.selColony.textContent = colony ? colony.id.toString() : "— (unicellular)";
+  els.selRole.textContent = org.role;
   els.selDna.textContent = dnaString(org.genome.dna);
   els.selEnergy.textContent = org.energy.toFixed(1);
   els.selAge.textContent = org.age.toString();
@@ -320,18 +366,21 @@ function drawInspector() {
   els.selAggression.textContent = t.aggression.toFixed(2);
   els.selAltruism.textContent = t.altruism.toFixed(2);
   els.selBio.textContent = t.bioluminescence.toFixed(2);
-  els.selPlan.textContent = `${morpho.bodyPlan} · ${morpho.segmentCount} seg · ${morpho.limbPairs} limb-pairs`;
+  els.selMutation.textContent = t.evolvableMutationRate.toFixed(4);
+  els.selPlan.textContent = `${morpho.bodyPlan} · ${morpho.segmentCount} seg · ${morpho.limbPairs} limbs · colony: ${colony ? colony.memberIds.length : 0} cells`;
 }
 
 function onPointerDown(e) {
   if (!sim) return;
   const rect = canvas.getBoundingClientRect();
-  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  const mouse = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(mouse, camera);
   const hits = [];
   organGroups.forEach((g) => hits.push(...raycaster.intersectObject(g.mesh, false)));
-  hits.push(...raycaster.intersectObject(foodMesh, false));
   hits.sort((a, b) => a.distance - b.distance);
   selectedId = null;
   if (hits.length) {
@@ -344,9 +393,6 @@ function onPointerDown(e) {
     selectedId = best ? best.id : null;
   }
 }
-
-let mouse = new THREE.Vector2();
-let raycaster = new THREE.Raycaster();
 
 function animate(now) {
   requestAnimationFrame(animate);

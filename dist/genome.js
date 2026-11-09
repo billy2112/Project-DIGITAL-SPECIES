@@ -17,6 +17,13 @@ export const TRAIT_DEFAULTS = {
     aggression: 0.3,
     altruism: 0.2,
     bioluminescence: 0.1,
+    adhesion: 0.3,
+    cooperation: 0.3,
+    evolvableMutationRate: 0.02,
+    evolvableLearningRate: 0.01,
+    cellRolePreference: 0.0,
+    apoptosisTendency: 0.1,
+    groupSelectionWeight: 0.2,
 };
 export const TRAIT_MIN = {
     baseMaintenance: 0.02,
@@ -34,6 +41,13 @@ export const TRAIT_MIN = {
     aggression: 0.0,
     altruism: 0.0,
     bioluminescence: 0.0,
+    adhesion: 0.0,
+    cooperation: 0.0,
+    evolvableMutationRate: 0.0005,
+    evolvableLearningRate: 0.0001,
+    cellRolePreference: 0.0,
+    apoptosisTendency: 0.0,
+    groupSelectionWeight: 0.0,
 };
 export const TRAIT_MAX = {
     baseMaintenance: 1.0,
@@ -51,6 +65,13 @@ export const TRAIT_MAX = {
     aggression: 1.0,
     altruism: 1.0,
     bioluminescence: 1.0,
+    adhesion: 1.0,
+    cooperation: 1.0,
+    evolvableMutationRate: 0.2,
+    evolvableLearningRate: 0.1,
+    cellRolePreference: 1.0,
+    apoptosisTendency: 1.0,
+    groupSelectionWeight: 1.0,
 };
 const TRAIT_KEYS = [
     "baseMaintenance",
@@ -68,6 +89,13 @@ const TRAIT_KEYS = [
     "aggression",
     "altruism",
     "bioluminescence",
+    "adhesion",
+    "cooperation",
+    "evolvableMutationRate",
+    "evolvableLearningRate",
+    "cellRolePreference",
+    "apoptosisTendency",
+    "groupSelectionWeight",
 ];
 export const DEFAULT_LAYOUT = {
     inputs: 14,
@@ -159,6 +187,13 @@ export function createRandomGenome(rng, layout = DEFAULT_LAYOUT) {
         aggression: rng.range(0.0, 0.5),
         altruism: rng.range(0.0, 0.5),
         bioluminescence: morpho.glowIntensity * 0.5 + 0.1,
+        adhesion: rng.range(0.0, 0.5),
+        cooperation: rng.range(0.0, 0.5),
+        evolvableMutationRate: rng.range(0.005, 0.05),
+        evolvableLearningRate: rng.range(0.001, 0.02),
+        cellRolePreference: rng.random(),
+        apoptosisTendency: rng.range(0.0, 0.3),
+        groupSelectionWeight: rng.range(0.0, 0.4),
     };
     return { weights, traits, dna, dnaVersion: 1 };
 }
@@ -199,7 +234,10 @@ export function crossoverGenome(a, b, rng) {
 }
 export function mutateGenome(parent, rng) {
     const child = cloneGenome(parent);
-    const mr = parent.traits.mutationRate;
+    // Evolution of evolvability: the mutation rate itself is an evolvable trait
+    // that mutates at a lower meta-rate (Tokyo Type 2 OEE).
+    const mr = parent.traits.evolvableMutationRate;
+    const metaMr = Math.max(mr * 0.1, 0.0002);
     for (let i = 0; i < child.weights.length; i++) {
         if (rng.random() < mr) {
             child.weights[i] += rng.gauss() * 0.3 * mr;
@@ -208,6 +246,23 @@ export function mutateGenome(parent, rng) {
     child.dna = mutateDna(child.dna, rng, mr);
     const morpho = dnaToMorphotype(child.dna);
     for (const key of TRAIT_KEYS) {
+        if (key === "evolvableMutationRate") {
+            // meta-mutation: mutation rate mutates at a reduced meta-rate
+            if (rng.random() < metaMr) {
+                const cur = child.traits[key];
+                const next = clamp(cur + rng.gauss() * 0.2 * (TRAIT_MAX[key] - TRAIT_MIN[key]) * metaMr, TRAIT_MIN[key], TRAIT_MAX[key]);
+                child.traits[key] = next;
+            }
+            continue;
+        }
+        if (key === "evolvableLearningRate") {
+            if (rng.random() < metaMr) {
+                const cur = child.traits[key];
+                const next = clamp(cur + rng.gauss() * 0.2 * (TRAIT_MAX[key] - TRAIT_MIN[key]) * metaMr, TRAIT_MIN[key], TRAIT_MAX[key]);
+                child.traits[key] = next;
+            }
+            continue;
+        }
         if (rng.random() < mr) {
             const lo = TRAIT_MIN[key];
             const hi = TRAIT_MAX[key];

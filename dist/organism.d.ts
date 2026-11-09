@@ -2,6 +2,7 @@ import { RNG } from "./rng.js";
 import { Genome, BrainLayout } from "./genome.js";
 import { Brain } from "./brain.js";
 import { World } from "./world.js";
+import { CellRole } from "./colony.js";
 export interface Percept {
     inputs: Float32Array;
     energy: number;
@@ -17,6 +18,8 @@ export interface OrganismState {
     dead: boolean;
     genome: Genome;
     parentId: number | null;
+    colonyId: number | null;
+    role: CellRole;
     size: number;
     strength: number;
 }
@@ -47,11 +50,13 @@ export declare class Organism {
     readonly brain: Brain;
     readonly memory: Float32Array;
     readonly parentId: number | null;
+    colonyId: number | null;
+    role: CellRole;
     private memoryCount;
     private memoryWriteIdx;
     private lastPercept;
     private lastOutput;
-    constructor(id: number, x: number, y: number, energy: number, genome: Genome, parentId?: number | null, generation?: number, layout?: BrainLayout);
+    constructor(id: number, x: number, y: number, energy: number, genome: Genome, parentId?: number | null, generation?: number, colonyId?: number | null, role?: CellRole, layout?: BrainLayout);
     perceive(world: World): Float32Array;
     think(inputs: Float32Array): Float32Array;
     act(outputs: Float32Array, world: World, rng: RNG): {
@@ -63,7 +68,7 @@ export declare class Organism {
     private memoryMean;
     private memoryWrite;
     private clampPos;
-    static reproduce(parent: Organism, childEnergy: number, rng: RNG, childId: number, sexual?: boolean, otherParent?: Organism | null, generationOffset?: number): Organism;
-    static sexualReproduce(a: Organism, b: Organism, rng: RNG, childId: number): Organism;
+    static reproduce(parent: Organism, childEnergy: number, rng: RNG, childId: number, sexual?: boolean, otherParent?: Organism | null, generationOffset?: number, colonyId?: number | null, role?: CellRole): Organism;
+    static sexualReproduce(a: Organism, b: Organism, rng: RNG, childId: number, colonyId?: number | null, role?: CellRole): Organism;
     getState(): OrganismState;
 }

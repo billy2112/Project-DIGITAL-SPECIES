@@ -14,11 +14,13 @@ export class Organism {
     brain;
     memory;
     parentId;
+    colonyId = null;
+    role = "free";
     memoryCount = 0;
     memoryWriteIdx = 0;
     lastPercept = null;
     lastOutput = null;
-    constructor(id, x, y, energy, genome, parentId = null, generation = 1, layout = DEFAULT_LAYOUT) {
+    constructor(id, x, y, energy, genome, parentId = null, generation = 1, colonyId = null, role = "free", layout = DEFAULT_LAYOUT) {
         this.id = id;
         this.x = x;
         this.y = y;
@@ -26,6 +28,8 @@ export class Organism {
         this.genome = genome;
         this.parentId = parentId;
         this.generation = generation;
+        this.colonyId = colonyId ?? null;
+        this.role = role ?? "free";
         this.brain = new Brain(genome, layout);
         this.memory = new Float32Array(Math.max(1, genome.traits.memoryCapacity));
     }
@@ -210,7 +214,7 @@ export class Organism {
     clampPos(v, limit) {
         return ((v % limit) + limit) % limit;
     }
-    static reproduce(parent, childEnergy, rng, childId, sexual = false, otherParent = null, generationOffset = 1) {
+    static reproduce(parent, childEnergy, rng, childId, sexual = false, otherParent = null, generationOffset = 1, colonyId = null, role = "free") {
         let childGenome;
         if (sexual && otherParent) {
             childGenome = crossoverGenome(parent.genome, otherParent.genome, rng);
@@ -221,13 +225,13 @@ export class Organism {
         }
         const generation = Math.max(parent.generation, otherParent?.generation ?? 0) +
             generationOffset;
-        return new Organism(childId, parent.x, parent.y, childEnergy, childGenome, parent.id, generation, DEFAULT_LAYOUT);
+        return new Organism(childId, parent.x, parent.y, childEnergy, childGenome, parent.id, generation, colonyId, role, DEFAULT_LAYOUT);
     }
-    static sexualReproduce(a, b, rng, childId) {
+    static sexualReproduce(a, b, rng, childId, colonyId = null, role = "free") {
         const childEnergy = (a.genome.traits.reproductionCost +
             b.genome.traits.reproductionCost) *
             0.5;
-        const child = Organism.reproduce(a, childEnergy, rng, childId, true, b);
+        const child = Organism.reproduce(a, childEnergy, rng, childId, true, b, 1, colonyId, role);
         return child;
     }
     getState() {
@@ -242,6 +246,8 @@ export class Organism {
             dead: this.dead,
             genome: this.genome,
             parentId: this.parentId,
+            colonyId: this.colonyId,
+            role: this.role,
             size: this.genome.traits.size,
             strength: this.genome.traits.strength,
         };

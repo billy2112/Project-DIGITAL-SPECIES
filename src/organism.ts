@@ -3,6 +3,7 @@ import { Genome, DEFAULT_LAYOUT, BrainLayout } from "./genome.js";
 import { Brain } from "./brain.js";
 import { World } from "./world.js";
 import { mutateGenome, crossoverGenome } from "./genome.js";
+import { CellRole } from "./colony.js";
 
 export interface Percept {
   inputs: Float32Array;
@@ -20,6 +21,8 @@ export interface OrganismState {
   dead: boolean;
   genome: Genome;
   parentId: number | null;
+  colonyId: number | null;
+  role: CellRole;
   size: number;
   strength: number;
 }
@@ -53,6 +56,8 @@ export class Organism {
   readonly brain: Brain;
   readonly memory: Float32Array;
   readonly parentId: number | null;
+  colonyId: number | null = null;
+  role: CellRole = "free";
   private memoryCount = 0;
   private memoryWriteIdx = 0;
   private lastPercept: Float32Array | null = null;
@@ -66,6 +71,8 @@ export class Organism {
     genome: Genome,
     parentId: number | null = null,
     generation = 1,
+    colonyId: number | null = null,
+    role: CellRole = "free",
     layout: BrainLayout = DEFAULT_LAYOUT,
   ) {
     this.id = id;
@@ -75,6 +82,8 @@ export class Organism {
     this.genome = genome;
     this.parentId = parentId;
     this.generation = generation;
+    this.colonyId = colonyId ?? null;
+    this.role = role ?? "free";
     this.brain = new Brain(genome, layout);
     this.memory = new Float32Array(Math.max(1, genome.traits.memoryCapacity));
   }
@@ -319,6 +328,8 @@ export class Organism {
     sexual = false,
     otherParent: Organism | null = null,
     generationOffset = 1,
+    colonyId: number | null = null,
+    role: CellRole = "free",
   ): Organism {
     let childGenome: Genome;
     if (sexual && otherParent) {
@@ -338,6 +349,8 @@ export class Organism {
       childGenome,
       parent.id,
       generation,
+      colonyId,
+      role,
       DEFAULT_LAYOUT,
     );
   }
@@ -347,6 +360,8 @@ export class Organism {
     b: Organism,
     rng: RNG,
     childId: number,
+    colonyId: number | null = null,
+    role: CellRole = "free",
   ): Organism {
     const childEnergy = (a.genome.traits.reproductionCost +
       b.genome.traits.reproductionCost) *
@@ -358,6 +373,9 @@ export class Organism {
       childId,
       true,
       b,
+      1,
+      colonyId,
+      role,
     );
     return child;
   }
@@ -374,6 +392,8 @@ export class Organism {
       dead: this.dead,
       genome: this.genome,
       parentId: this.parentId,
+      colonyId: this.colonyId,
+      role: this.role,
       size: this.genome.traits.size,
       strength: this.genome.traits.strength,
     };

@@ -15,6 +15,13 @@ export interface GenomeTraits {
     aggression: number;
     altruism: number;
     bioluminescence: number;
+    adhesion: number;
+    cooperation: number;
+    evolvableMutationRate: number;
+    evolvableLearningRate: number;
+    cellRolePreference: number;
+    apoptosisTendency: number;
+    groupSelectionWeight: number;
 }
 export interface Morphotype {
     bodyPlan: "blob" | "segmented" | "star" | "spiral" | "rays";

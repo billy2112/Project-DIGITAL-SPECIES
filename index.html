@@ -15,22 +15,22 @@
     padding: 0 14px; z-index: 40; border-bottom: 1px solid rgba(255,255,255,0.06); }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: 0.06em; font-size: 15px; color: #22c55e; }
   .brand .dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 10px #22c55e; }
-  .hud-row { display: flex; gap: 14px; font-size: 12px; }
+  .hud-row { display: flex; gap: 10px; font-size: 11.5px; flex-wrap: wrap; }
   .stat { display: flex; flex-direction: column; gap: 2px; }
-  .stat .k { color: #8a93a5; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .k { color: #8a93a5; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; }
   .stat .v { color: #fff; font-variant-numeric: tabular-nums; font-weight: 700; }
 
   .controls { position: absolute; bottom: 0; left: 0; right: 0;
     background: rgba(8, 10, 14, 0.85); border-top: 1px solid rgba(255,255,255,0.08);
     padding: 10px 14px 14px; z-index: 40; display: flex; flex-direction: column; gap: 10px; }
   .ctrl-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  button { flex: 1 1 115px; min-width: 100px; padding: 9px 12px; border-radius: 10px;
+  button { flex: 1 1 110px; min-width: 95px; padding: 9px 12px; border-radius: 10px;
     border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.07);
     color: #e8e8ea; font-size: 13px; font-weight: 700; cursor: pointer; }
   button:active { background: rgba(255,255,255,0.18); }
   button.primary { background: #22c55e; border-color: #22c55e; color: #000; }
   button.primary:active { background: #4ade80; }
-  .ctrl-field { display: flex; flex-direction: column; gap: 4px; min-width: 100px; flex: 1; }
+  .ctrl-field { display: flex; flex-direction: column; gap: 4px; min-width: 95px; flex: 1; }
   .ctrl-field label { font-size: 10px; color: #8a93a5; text-transform: uppercase; letter-spacing: 0.05em; }
   input { width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
     background: rgba(0,0,0,0.35); color: #e8e8ea; font-size: 13px; }
@@ -39,11 +39,12 @@
   /* inspector sheet */
   #inspector { position: absolute; top: 60px; right: 0; width: 320px; height: calc(100vh - 60px - 120px);
     background: rgba(10, 12, 18, 0.92); border-left: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(10px); padding: 16px; z-index: 40; display: flex; flex-direction: column; gap: 10px;
+    backdrop-filter: blur(10px); padding: 16px; z-index: 40; display: flex; flex-direction: column; gap: 9px;
     transform: translateX(100%); transition: transform 0.25s ease; overflow-y: auto; }
   #inspector.open { transform: translateX(0); }
   #inspector.empty { pointer-events: none; opacity: 0.55; }
-  #inspector h2 { margin: 0 0 8px; font-size: 15px; color: #22c55e; }
+  #inspector h2 { margin: 0 0 8px; font-size: 15px; color: #22c55e; display: flex; gap: 8px; align-items: center; }
+  #inspector .tag { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,0.1); color: #22c55e; }
   .sel-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 6px 0; }
   .sel-row .k { color: #8a93a5; font-size: 11px; }
   .sel-row .v { color: #fff; font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; word-break: break-all; }
@@ -58,13 +59,13 @@
   #overlay-paused .sub { font-size: 15px; color: #9aa3b4; }
 
   @media (max-width: 760px) {
-    #inspector { position: fixed; bottom: 130px; left: 0; right: 0; top: auto; width: auto; height: 170px;
+    #inspector { position: fixed; bottom: 130px; left: 0; right: 0; top: auto; width: auto; height: 185px;
       border: none; border-top: 1px solid rgba(255,255,255,0.08); border-radius: 16px 16px 0 0;
       transform: translateY(100%); transition: transform 0.25s ease; overflow-y: visible; }
     #inspector.open { transform: translateY(0); }
-    .hud-row { gap: 10px; font-size: 11px; }
+    .hud-row { gap: 8px; font-size: 10.5px; }
     .ctrl-row { gap: 8px; }
-    button { min-width: 85px; padding: 8px 10px; font-size: 12px; }
+    button { min-width: 80px; padding: 8px 10px; font-size: 12px; }
   }
 </style>
 </head>
@@ -75,17 +76,22 @@
   <div class="brand"><div class="dot"></div>Project DIGITAL SPECIES</div>
   <div class="hud-row">
     <div class="stat"><div class="k">Tick</div><div class="v" id="stat-tick">0</div></div>
-    <div class="stat"><div class="k">Population</div><div class="v" id="stat-pop">0</div></div>
-    <div class="stat"><div class="k">Births</div><div class="v" id="stat-births">0</div></div>
-    <div class="stat"><div class="k">Sexual</div><div class="v" id="stat-sexual">0</div></div>
-    <div class="stat"><div class="k">Deaths</div><div class="v" id="stat-deaths">0</div></div>
-    <div class="stat"><div class="k">Kills</div><div class="v" id="stat-kills">0</div></div>
-    <div class="stat"><div class="k">Species</div><div class="v" id="stat-species">0</div></div>
     <div class="stat"><div class="k">Day</div><div class="v" id="stat-day">1</div></div>
+    <div class="stat"><div class="k">Population</div><div class="v" id="stat-pop">0</div></div>
+    <div class="stat"><div class="k">Colonies</div><div class="v" id="stat-colonies">0</div></div>
+    <div class="stat"><div class="k">Births</div><div class="v" id="stat-births">0</div></div>
+    <div class="stat"><div class="k">Colony Buds</div><div class="v" id="stat-buds">0</div></div>
+    <div class="stat"><div class="k">Deaths</div><div class="v" id="stat-deaths">0</div></div>
+    <div class="stat"><div class="k">Apoptosis</div><div class="v" id="stat-apoptosis">0</div></div>
+    <div class="stat"><div class="k">Kills</div><div class="v" id="stat-kills">0</div></div>
+    <div class="stat"><div class="k">Colony Deaths</div><div class="v" id="stat-colony-deaths">0</div></div>
+    <div class="stat"><div class="k">Species</div><div class="v" id="stat-species">0</div></div>
     <div class="stat"><div class="k">Avg Energy</div><div class="v" id="stat-energy">0</div></div>
     <div class="stat"><div class="k">Avg Size</div><div class="v" id="stat-size">0</div></div>
     <div class="stat"><div class="k">Strength</div><div class="v" id="stat-strength">0</div></div>
     <div class="stat"><div class="k">Aggression</div><div class="v" id="stat-aggression">0</div></div>
+    <div class="stat"><div class="k">Cooperation</div><div class="v" id="stat-cooperation">0</div></div>
+    <div class="stat"><div class="k">Mutation Rate</div><div class="v" id="stat-mutation">0</div></div>
   </div>
 </header>
 
@@ -101,7 +107,8 @@
 </div>
 
 <div id="inspector">
-  <h2>Organism <span id="sel-id">—</span></h2>
+  <h2>Organism <span id="sel-id">—</span><span id="sel-colony" class="tag">—</span></h2>
+  <div class="sel-row"><span class="k">Role</span><span class="v" id="sel-role">—</span></div>
   <div class="sel-row"><span class="k">DNA</span><span class="v" id="sel-dna">—</span></div>
   <div class="sel-row"><span class="k">Energy</span><span class="v" id="sel-energy">—</span></div>
   <div class="sel-row"><span class="k">Age</span><span class="v" id="sel-age">—</span></div>
@@ -111,8 +118,9 @@
   <div class="sel-row"><span class="k">Aggression</span><span class="v" id="sel-aggression">—</span></div>
   <div class="sel-row"><span class="k">Altruism</span><span class="v" id="sel-altruism">—</span></div>
   <div class="sel-row"><span class="k">Biolum.</span><span class="v" id="sel-bio">—</span></div>
-  <div class="sel-row"><span class="k">Body plan</span><span class="v" id="sel-plan">—</span></div>
-  <div class="hint">Tap an organism to inspect its DNA &amp; 3D morphology. Models auto-generate from DNA.</div>
+  <div class="sel-row"><span class="k">Mutation Rate</span><span class="v" id="sel-mutation">—</span></div>
+  <div class="sel-row"><span class="k">Body Plan</span><span class="v" id="sel-plan">—</span></div>
+  <div class="hint">Tap an organism to inspect its DNA &amp; 3D morphology. Colors = cell role. Lines = colony bonds.</div>
 </div>
 
 <div id="overlay-paused" class="hidden">
