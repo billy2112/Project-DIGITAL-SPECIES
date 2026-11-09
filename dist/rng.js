@@ -1,20 +1,13 @@
 const MUL = 0x100000000;
-function mulberry32(seed) {
-    return () => {
-        seed |= 0;
-        seed = (seed + 0x6d2b79f5) | 0;
-        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / MUL;
-    };
-}
 export class RNG {
-    next;
     constructor(seed) {
-        this.next = mulberry32(seed >>> 0);
+        this.state = seed >>> 0;
     }
     random() {
-        return this.next();
+        this.state = (this.state + 0x6d2b79f5) | 0;
+        let t = Math.imul(this.state ^ (this.state >>> 15), 1 | this.state);
+        t = (t + Math.imul(t ^ (this.state >>> 7), 61 | this.state)) ^ t;
+        return ((t ^ (this.state >>> 14)) >>> 0) / MUL;
     }
     range(min, max) {
         return min + this.random() * (max - min);
@@ -32,6 +25,17 @@ export class RNG {
         while (v === 0)
             v = this.random();
         return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    }
+    getState() {
+        return this.state >>> 0;
+    }
+    setState(state) {
+        this.state = state >>> 0;
+    }
+    clone() {
+        const clone = new RNG(0);
+        clone.state = this.state;
+        return clone;
     }
 }
 export const clamp = (v, min, max) => Math.min(max, Math.max(min, v));

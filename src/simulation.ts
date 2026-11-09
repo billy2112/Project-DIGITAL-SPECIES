@@ -82,6 +82,11 @@ export const SIM_DEFAULTS: SimulationConfig = {
   pheromoneDecay: 0.02,
   maxTicks: 10000,
   dayLength: 1000,
+  nutrientDecay: 0.01,
+  nutrientRegenBoost: 0.5,
+  temperatureMin: 15,
+  temperatureMax: 30,
+  lightCycleLength: 1000,
 };
 
 const GRID_CELL = 3;
@@ -108,14 +113,22 @@ export class Simulation {
   constructor(config: Partial<SimulationConfig> = {}) {
     this.config = { ...SIM_DEFAULTS, ...config };
     this.rng = new RNG(this.config.seed);
-    this.world = new World({
-      width: this.config.width,
-      height: this.config.height,
-      foodRegenRate: this.config.foodRegenRate,
-      foodMaxPerCell: this.config.foodMaxPerCell,
-      foodSpawnChance: this.config.foodSpawnChance,
-      pheromoneDecay: this.config.pheromoneDecay,
-    });
+    this.world = new World(
+      {
+        width: this.config.width,
+        height: this.config.height,
+        foodRegenRate: this.config.foodRegenRate,
+        foodMaxPerCell: this.config.foodMaxPerCell,
+        foodSpawnChance: this.config.foodSpawnChance,
+        pheromoneDecay: this.config.pheromoneDecay,
+        nutrientDecay: this.config.nutrientDecay,
+        nutrientRegenBoost: this.config.nutrientRegenBoost,
+        temperatureMin: this.config.temperatureMin,
+        temperatureMax: this.config.temperatureMax,
+        lightCycleLength: this.config.lightCycleLength,
+      },
+      this.rng
+    );
     this.nextId = 0;
     this.nextColonyId = 0;
     this.seedPopulation(this.config.initialPopulation, this.config.initialEnergy);
@@ -461,11 +474,16 @@ export class Simulation {
     for (const org of alive) {
       if (org.dead) continue;
       const before = org.energy;
-      org.tickMetabolism();
+      org.tickMetabolism(this.world);
       const after = org.energy;
       const reward = (after - before) * 0.1;
       org.learn(reward);
       if (org.dead) {
+        // Decomposition: return most of remaining energy to the environment as nutrients
+        const decomposeEnergy = Math.max(0, after) * 0.8;
+        if (decomposeEnergy > 0) {
+          this.world.decompose(org.x, org.y, decomposeEnergy);
+        }
         this.totalDeaths++;
         events.push({ type: "death", tick: tick, organismId: org.id, x: org.x, y: org.y });
       } else {
@@ -478,6 +496,8 @@ export class Simulation {
     // ---- Phase F: world processes ----
     this.world.regenerateFood(this.rng);
     this.world.decayPheromones();
+    this.world.decayNutrients();
+    this.world.updateEnvironment(this.tick);
     this.tick++;
     return events;
   }
@@ -577,5 +597,99 @@ export class Simulation {
 
   getOrganismColor(org: Organism): string {
     return genomeHashColor(org.genome);
+  }
+
+  // ---- Serialization ----
+
+  captureState(): {
+    config: SimulationConfig;
+    rngState: number;
+    tick: number;
+    nextId: number;
+    nextColonyId: number;
+    totals: {
+      births: number;
+      sexualBirths: number;
+      colonyBuds: number;
+      deaths: number;
+      apoptosis: number;
+      kills: number;
+      colonyDeaths: number;
+    };
+    world: ReturnType<World["serialize"]>;
+    organisms: ReturnType<Organism["serialize"]>[];
+    colonies: ReturnType<Colony["serialize"]>[];
+    events: SimEvent[];
+  } {
+    return {
+      config: { ...this.config },
+      rngState: this.rng.getState(),
+      tick: this.tick,
+      nextId: this.nextId,
+      nextColonyId: this.nextColonyId,
+      totals: {
+        births: this.totalBirths,
+        sexualBirths: this.totalSexualBirths,
+        colonyBuds: this.totalColonyBuds,
+        deaths: this.totalDeaths,
+        apoptosis: this.totalApoptosis,
+        kills: this.totalKills,
+        colonyDeaths: this.totalColonyDeaths,
+      },
+      world: this.world.serialize(),
+      organisms: this.organisms.map((o) => o.serialize()),
+      colonies: [...this.colonies.values()].map((c) => c.serialize()),
+      events: [...this.events],
+    };
+  }
+
+  restoreState(state: {
+    config: SimulationConfig;
+    rngState: number;
+    tick: number;
+    nextId: number;
+    nextColonyId: number;
+    totals: {
+      births: number;
+      sexualBirths: number;
+      colonyBuds: number;
+      deaths: number;
+      apoptosis: number;
+      kills: number;
+      colonyDeaths: number;
+    };
+    world: ReturnType<World["serialize"]>;
+    organisms: ReturnType<Organism["serialize"]>[];
+    colonies: ReturnType<Colony["serialize"]>[];
+    events: SimEvent[];
+  }): void {
+    this.config = { ...SIM_DEFAULTS, ...state.config };
+    this.rng.setState(state.rngState);
+    this.tick = state.tick;
+    this.nextId = state.nextId;
+    this.nextColonyId = state.nextColonyId;
+    this.totalBirths = state.totals.births;
+    this.totalSexualBirths = state.totals.sexualBirths;
+    this.totalColonyBuds = state.totals.colonyBuds;
+    this.totalDeaths = state.totals.deaths;
+    this.totalApoptosis = state.totals.apoptosis;
+    this.totalKills = state.totals.kills;
+    this.totalColonyDeaths = state.totals.colonyDeaths;
+
+    this.world = World.deserialize(state.world);
+    this.organisms.length = 0;
+    for (const oData of state.organisms) {
+      this.organisms.push(Organism.deserialize(oData));
+    }
+    this.colonies.clear();
+    this.organismColony.clear();
+    for (const cData of state.colonies) {
+      const colony = Colony.deserialize(cData);
+      this.colonies.set(colony.id, colony);
+      for (const mid of colony.memberIds) {
+        this.organismColony.set(mid, colony.id);
+      }
+    }
+    this.events = [...state.events];
   }
 }

@@ -15,6 +15,11 @@ export const SIM_DEFAULTS = {
     pheromoneDecay: 0.02,
     maxTicks: 10000,
     dayLength: 1000,
+    nutrientDecay: 0.01,
+    nutrientRegenBoost: 0.5,
+    temperatureMin: 15,
+    temperatureMax: 30,
+    lightCycleLength: 1000,
 };
 const GRID_CELL = 3;
 export class Simulation {
@@ -208,6 +213,9 @@ export class Simulation {
                 const colonyNeed = c.energy < c.budThreshold() * 0.5;
                 const apoptosisChance = t.apoptosisTendency * 0.02 + (o.energy <= 5 ? 0.3 : 0) + (colonyNeed ? 0.05 : 0);
                 if (this.rng.random() < apoptosisChance && membersAlive.length > 2) {
+                    const decompEnergy = Math.max(0, o.energy) * 0.8;
+                    if (decompEnergy > 0)
+                        this.world.decompose(o.x, o.y, decompEnergy);
                     c.energy += o.energy * 0.7; // energy returned to colony
                     o.energy = 0;
                     o.dead = true;
@@ -379,11 +387,14 @@ export class Simulation {
             if (org.dead)
                 continue;
             const before = org.energy;
-            org.tickMetabolism();
+            org.tickMetabolism(this.world);
             const after = org.energy;
             const reward = (after - before) * 0.1;
             org.learn(reward);
             if (org.dead) {
+                const decompEnergy = Math.max(0, after) * 0.8;
+                if (decompEnergy > 0)
+                    this.world.decompose(org.x, org.y, decompEnergy);
                 this.totalDeaths++;
                 events.push({ type: "death", tick: tick, organismId: org.id, x: org.x, y: org.y });
             }
@@ -396,6 +407,8 @@ export class Simulation {
         // ---- Phase F: world processes ----
         this.world.regenerateFood(this.rng);
         this.world.decayPheromones();
+        this.world.decayNutrients();
+        this.world.updateEnvironment(this.tick);
         this.tick++;
         return events;
     }
@@ -494,5 +507,56 @@ export class Simulation {
     }
     getOrganismColor(org) {
         return genomeHashColor(org.genome);
+    }
+    captureState() {
+        return {
+            config: { ...this.config },
+            rngState: this.rng.getState(),
+            tick: this.tick,
+            nextId: this.nextId,
+            nextColonyId: this.nextColonyId,
+            totals: {
+                births: this.totalBirths,
+                sexualBirths: this.totalSexualBirths,
+                colonyBuds: this.totalColonyBuds,
+                deaths: this.totalDeaths,
+                apoptosis: this.totalApoptosis,
+                kills: this.totalKills,
+                colonyDeaths: this.totalColonyDeaths,
+            },
+            world: this.world.serialize(),
+            organisms: this.organisms.map((o) => o.serialize()),
+            colonies: [...this.colonies.values()].map((c) => c.serialize()),
+            events: [...this.events],
+        };
+    }
+    restoreState(state) {
+        this.config = { ...SIM_DEFAULTS, ...state.config };
+        this.rng.setState(state.rngState);
+        this.tick = state.tick;
+        this.nextId = state.nextId;
+        this.nextColonyId = state.nextColonyId;
+        this.totalBirths = state.totals.births;
+        this.totalSexualBirths = state.totals.sexualBirths;
+        this.totalColonyBuds = state.totals.colonyBuds;
+        this.totalDeaths = state.totals.deaths;
+        this.totalApoptosis = state.totals.apoptosis;
+        this.totalKills = state.totals.kills;
+        this.totalColonyDeaths = state.totals.colonyDeaths;
+        this.world = World.deserialize(state.world);
+        this.organisms.length = 0;
+        for (const oData of state.organisms) {
+            this.organisms.push(Organism.deserialize(oData));
+        }
+        this.colonies.clear();
+        this.organismColony.clear();
+        for (const cData of state.colonies) {
+            const colony = Colony.deserialize(cData);
+            this.colonies.set(colony.id, colony);
+            for (const mid of colony.memberIds) {
+                this.organismColony.set(mid, colony.id);
+            }
+        }
+        this.events = [...state.events];
     }
 }

@@ -98,7 +98,7 @@ const TRAIT_KEYS = [
     "groupSelectionWeight",
 ];
 export const DEFAULT_LAYOUT = {
-    inputs: 14,
+    inputs: 16,
     hidden: 20,
     outputs: 8,
 };
@@ -339,4 +339,20 @@ export function dnaFromString(s) {
     for (let i = 0; i < d.length; i++)
         d[i] = m[s[i]] ?? 0;
     return d;
+}
+export function serializeGenome(g) {
+    return {
+        weights: Array.from(g.weights),
+        traits: { ...g.traits },
+        dna: Array.from(g.dna),
+        dnaVersion: g.dnaVersion,
+    };
+}
+export function deserializeGenome(json) {
+    return {
+        weights: new Float32Array(json.weights),
+        traits: { ...json.traits },
+        dna: new Uint8Array(json.dna),
+        dnaVersion: json.dnaVersion,
+    };
 }

@@ -2,7 +2,7 @@ import { RNG, clamp } from "./rng.js";
 import { Genome, DEFAULT_LAYOUT, BrainLayout } from "./genome.js";
 import { Brain } from "./brain.js";
 import { World } from "./world.js";
-import { mutateGenome, crossoverGenome } from "./genome.js";
+import { mutateGenome, crossoverGenome, serializeGenome, deserializeGenome } from "./genome.js";
 import { CellRole } from "./colony.js";
 
 export interface Percept {
@@ -138,7 +138,7 @@ export class Organism {
     );
 
     const area = Math.PI * vision * vision;
-    const inputs = new Float32Array(14);
+    const inputs = new Float32Array(16);
     inputs[0] = clamp(this.energy / maxE, 0, 1);
     inputs[1] = clamp(this.age / t.maxAge, 0, 1);
     inputs[2] = clamp(cellFood, 0, 1);
@@ -153,6 +153,8 @@ export class Organism {
     inputs[11] = world.pheromoneAt(fx, fy);
     inputs[12] = nearestOrgSize;
     inputs[13] = t.bioluminescence;
+    inputs[14] = clamp((world.temperatureAt(this.x, this.y) - 15) / 15, 0, 1);
+    inputs[15] = world.lightAt(this.x, this.y);
 
     this.lastPercept = inputs;
     return inputs;
@@ -205,6 +207,13 @@ export class Organism {
       if (eat > 0) {
         world.consumeFood(fx, fy, eat);
         this.energy += eat * 0.8;
+      }
+      // Absorb nutrients from decomposition at this cell
+      const nAvailable = world.nutrientsAt(fx, fy);
+      const nTake = Math.min(nAvailable, consume * 10);
+      if (nTake > 0) {
+        world.absorbNutrients(fx, fy, nTake);
+        this.energy += nTake * 0.6;
       }
     }
 
@@ -280,10 +289,23 @@ export class Organism {
     return { events, attacks };
   }
 
-  tickMetabolism(): void {
+  tickMetabolism(world: World | null = null): void {
     const t = this.genome.traits;
     const sizePenalty = t.size * 0.1;
-    this.energy -= t.baseMaintenance + t.thinkCost * this.brain.hidden + sizePenalty;
+    // Temperature stress: deviating from optimal (22.5) raises maintenance cost
+    let tempMultiplier = 1;
+    if (world) {
+      const temp = world.temperatureAt(this.x, this.y);
+      const optimal = 22.5;
+      const tolerance = 7.5;
+      const stress = Math.max(0, Math.abs(temp - optimal) - tolerance) / tolerance;
+      tempMultiplier = 1 + stress * 0.5;
+    }
+    tempMultiplier = Math.min(Math.max(tempMultiplier, 0), 5);
+    this.energy -=
+      (t.baseMaintenance + t.thinkCost * this.brain.hidden + sizePenalty) *
+      tempMultiplier;
+    if (!Number.isFinite(this.energy) || this.energy < 0) this.energy = 0;
     this.age += 1;
     if (this.energy <= 0 || this.age >= t.maxAge) {
       this.dead = true;
@@ -317,6 +339,7 @@ export class Organism {
   }
 
   private clampPos(v: number, limit: number): number {
+    if (!Number.isFinite(v)) return 0;
     return ((v % limit) + limit) % limit;
   }
 
@@ -397,5 +420,70 @@ export class Organism {
       size: this.genome.traits.size,
       strength: this.genome.traits.strength,
     };
+  }
+
+  // ---- Serialization ----
+
+  serialize(): {
+    id: number;
+    x: number;
+    y: number;
+    energy: number;
+    age: number;
+    generation: number;
+    dead: boolean;
+    parentId: number | null;
+    colonyId: number | null;
+    role: CellRole;
+    genome: GenomeJSON;
+    memory: number[];
+  } {
+    return {
+      id: this.id,
+      x: this.x,
+      y: this.y,
+      energy: this.energy,
+      age: this.age,
+      generation: this.generation,
+      dead: this.dead,
+      parentId: this.parentId,
+      colonyId: this.colonyId,
+      role: this.role,
+      genome: serializeGenome(this.genome),
+      memory: Array.from(this.memory),
+    };
+  }
+
+  static deserialize(data: {
+    id: number;
+    x: number;
+    y: number;
+    energy: number;
+    age: number;
+    generation: number;
+    dead: boolean;
+    parentId: number | null;
+    colonyId: number | null;
+    role: CellRole;
+    genome: GenomeJSON;
+    memory: number[];
+  }): Organism {
+    const genome = deserializeGenome(data.genome);
+    const org = new Organism(
+      data.id,
+      data.x,
+      data.y,
+      data.energy,
+      genome,
+      data.parentId,
+      data.generation,
+      data.colonyId,
+      data.role,
+      DEFAULT_LAYOUT
+    );
+    org.age = data.age;
+    org.dead = data.dead;
+    org.memory = new Float32Array(data.memory);
+    return org;
   }
 }

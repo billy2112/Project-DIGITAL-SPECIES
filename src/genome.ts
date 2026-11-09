@@ -157,7 +157,7 @@ export interface BrainLayout {
 }
 
 export const DEFAULT_LAYOUT: BrainLayout = {
-  inputs: 14,
+  inputs: 16,
   hidden: 20,
   outputs: 8,
 };
@@ -416,4 +416,31 @@ export function dnaFromString(s: string): Uint8Array {
   const m: Record<string, number> = { A: 0, C: 1, G: 2, T: 3 };
   for (let i = 0; i < d.length; i++) d[i] = m[s[i]] ?? 0;
   return d;
+}
+
+// ---- Serialization ----
+
+export interface GenomeJSON {
+  weights: number[];
+  traits: GenomeTraits;
+  dna: number[];
+  dnaVersion: number;
+}
+
+export function serializeGenome(g: Genome): GenomeJSON {
+  return {
+    weights: Array.from(g.weights),
+    traits: { ...g.traits },
+    dna: Array.from(g.dna),
+    dnaVersion: g.dnaVersion,
+  };
+}
+
+export function deserializeGenome(json: GenomeJSON): Genome {
+  return {
+    weights: new Float32Array(json.weights),
+    traits: { ...json.traits },
+    dna: new Uint8Array(json.dna),
+    dnaVersion: json.dnaVersion,
+  };
 }

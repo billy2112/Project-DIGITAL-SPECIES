@@ -1,7 +1,7 @@
 import { clamp } from "./rng.js";
 import { DEFAULT_LAYOUT } from "./genome.js";
 import { Brain } from "./brain.js";
-import { mutateGenome, crossoverGenome } from "./genome.js";
+import { mutateGenome, crossoverGenome, serializeGenome, deserializeGenome } from "./genome.js";
 export class Organism {
     id;
     x;
@@ -75,7 +75,7 @@ export class Organism {
             }
         });
         const area = Math.PI * vision * vision;
-        const inputs = new Float32Array(14);
+        const inputs = new Float32Array(16);
         inputs[0] = clamp(this.energy / maxE, 0, 1);
         inputs[1] = clamp(this.age / t.maxAge, 0, 1);
         inputs[2] = clamp(cellFood, 0, 1);
@@ -90,6 +90,8 @@ export class Organism {
         inputs[11] = world.pheromoneAt(fx, fy);
         inputs[12] = nearestOrgSize;
         inputs[13] = t.bioluminescence;
+        inputs[14] = clamp((world.temperatureAt(this.x, this.y) - 15) / 15, 0, 1);
+        inputs[15] = world.lightAt(this.x, this.y);
         this.lastPercept = inputs;
         return inputs;
     }
@@ -131,6 +133,12 @@ export class Organism {
             if (eat > 0) {
                 world.consumeFood(fx, fy, eat);
                 this.energy += eat * 0.8;
+            }
+            const nAvailable = world.nutrientsAt(fx, fy);
+            const nTake = Math.min(nAvailable, consume * 10);
+            if (nTake > 0) {
+                world.absorbNutrients(fx, fy, nTake);
+                this.energy += nTake * 0.6;
             }
         }
         if (memoryWrite > 0.5) {
@@ -181,10 +189,21 @@ export class Organism {
         }
         return { events, attacks };
     }
-    tickMetabolism() {
+    tickMetabolism(world = null) {
         const t = this.genome.traits;
         const sizePenalty = t.size * 0.1;
-        this.energy -= t.baseMaintenance + t.thinkCost * this.brain.hidden + sizePenalty;
+        let tempMultiplier = 1;
+        if (world) {
+            const temp = world.temperatureAt(this.x, this.y);
+            const optimal = 22.5;
+            const tolerance = 7.5;
+            const stress = Math.max(0, Math.abs(temp - optimal) - tolerance) / tolerance;
+            tempMultiplier = 1 + stress * 0.5;
+        }
+        tempMultiplier = Math.min(Math.max(tempMultiplier, 0), 5);
+        this.energy -= (t.baseMaintenance + t.thinkCost * this.brain.hidden + sizePenalty) * tempMultiplier;
+        if (!Number.isFinite(this.energy) || this.energy < 0)
+            this.energy = 0;
         this.age += 1;
         if (this.energy <= 0 || this.age >= t.maxAge) {
             this.dead = true;
@@ -212,6 +231,8 @@ export class Organism {
             this.memoryCount++;
     }
     clampPos(v, limit) {
+        if (!Number.isFinite(v))
+            return 0;
         return ((v % limit) + limit) % limit;
     }
     static reproduce(parent, childEnergy, rng, childId, sexual = false, otherParent = null, generationOffset = 1, colonyId = null, role = "free") {
@@ -251,5 +272,29 @@ export class Organism {
             size: this.genome.traits.size,
             strength: this.genome.traits.strength,
         };
+    }
+    serialize() {
+        return {
+            id: this.id,
+            x: this.x,
+            y: this.y,
+            energy: this.energy,
+            age: this.age,
+            generation: this.generation,
+            dead: this.dead,
+            parentId: this.parentId,
+            colonyId: this.colonyId,
+            role: this.role,
+            genome: serializeGenome(this.genome),
+            memory: Array.from(this.memory),
+        };
+    }
+    static deserialize(data) {
+        const genome = deserializeGenome(data.genome);
+        const org = new Organism(data.id, data.x, data.y, data.energy, genome, data.parentId, data.generation, data.colonyId, data.role, DEFAULT_LAYOUT);
+        org.age = data.age;
+        org.dead = data.dead;
+        org.memory = new Float32Array(data.memory);
+        return org;
     }
 }

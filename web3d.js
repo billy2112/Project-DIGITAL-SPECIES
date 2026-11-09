@@ -257,12 +257,24 @@ function colonyColor(colonyId) {
 
 function updateOrganisms() {
   organGroups.forEach((g) => (g.count = 0));
-  const foodInstances = [];
   const state = sim.getState();
   const W = sim.world.width;
 
   const dummy = new THREE.Object3D();
   const bondPos = [];
+
+  const snap = state.snapshot;
+  const food = snap.food;
+  const foodInstances = [];
+  for (let i = 0; i < food.length; i++) {
+    const f = food[i];
+    if (f <= 0.5) continue;
+    const y = (i / W) | 0;
+    const x = i % W;
+    const br = Math.min(1, f / 100);
+    const nr = Math.min(1, snap.nutrients[i] / 100);
+    foodInstances.push({ x: x + 0.5, y: y + 0.5, s: 0.3 + 0.4 * br, br, nr });
+  }
 
   for (const org of state.organisms) {
     const morpho = dnaToMorphotype(org.genome.dna);
@@ -332,7 +344,7 @@ function updateOrganisms() {
     fd.scale.set(f.s, f.s, f.s);
     fd.updateMatrix();
     foodMesh.setMatrixAt(i, fd.matrix);
-    fc.setHSL(120 / 360, 0.6, 0.35 + 0.4 * f.br);
+    fc.setHSL((120 + f.nr * 60) / 360, 0.6, 0.35 + 0.4 * f.br);
     foodMesh.instanceColor.setXYZ(i, fc.r, fc.g, fc.b);
   }
   foodMesh.instanceMatrix.needsUpdate = true;

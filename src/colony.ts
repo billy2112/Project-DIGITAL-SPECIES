@@ -109,4 +109,59 @@ export class Colony {
   budCellCount(rng: RNG): number {
     return 2 + rng.int(0, Math.min(4, Math.max(1, this.memberIds.length)));
   }
+
+  // ---- Serialization ----
+
+  serialize(): {
+    id: number;
+    memberIds: number[];
+    x: number;
+    y: number;
+    energy: number;
+    age: number;
+    generation: number;
+    dead: boolean;
+    roleAssignment: Record<number, CellRole>;
+  } {
+    return {
+      id: this.id,
+      memberIds: [...this.memberIds],
+      x: this.x,
+      y: this.y,
+      energy: this.energy,
+      age: this.age,
+      generation: this.generation,
+      dead: this.dead,
+      roleAssignment: Object.fromEntries(this.roleAssignment),
+    };
+  }
+
+  static deserialize(data: {
+    id: number;
+    memberIds: number[];
+    x: number;
+    y: number;
+    energy: number;
+    age: number;
+    generation: number;
+    dead: boolean;
+    roleAssignment: Record<number, CellRole>;
+  }): Colony {
+    const colony = new Colony(
+      data.id,
+      data.memberIds[0] ?? 0,
+      data.energy
+    );
+    colony.memberIds = [...data.memberIds];
+    colony.x = data.x;
+    colony.y = data.y;
+    colony.energy = data.energy;
+    colony.age = data.age;
+    colony.generation = data.generation;
+    colony.dead = data.dead;
+    colony.roleAssignment = new Map(
+      Object.entries(data.roleAssignment).map(([k, v]) => [parseInt(k), v as CellRole])
+    );
+    return colony;
+  }
 }

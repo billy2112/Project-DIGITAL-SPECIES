@@ -1,52 +1,48 @@
-# Project DIGITAL SPECIES — Artificial Life Simulator
+# Project DIGITAL SPECIES — Artificial Life Research Platform
 
-A digital ecosystem containing thousands of artificial organisms. Behavior is not
-programmed individually — rules are defined and complex behavior emerges.
+A deterministic, scientifically grounded artificial life simulator and evolution laboratory.
+Behavior, morphology, intelligence, and social structure emerge from interacting rules —
+nothing is hardcoded. Organisms reproduce, mutate, compete, cooperate, and form multicellular
+colonies. The system supports save/load, reproducible experiments, and a 3D DNA-generated
+visualizer.
 
-## Organism model
+## Core Features
 
-Each organism carries:
-- **Memory** — a fixed-size ring buffer of recent energy states
-- **Energy** — gained by eating food, spent on movement, thinking, signalling, reproduction
-- **Goals** — encoded as output actions (move, eat, reproduce, signal, write memory)
-- **Environmental perception** — local food/organism/pheromone sensing within a vision range
-- **Learning** — Hebbian learning on a small neural network, modulated by reward
-- **Reproduction and mutation** — asexual reproduction with genetic mutation of weights and traits
-- **Limited computational resources** — per-tick energy budget constrains thinking and action
+- **DNA genome** (A/C/G/T) encoding morphology, color, bioluminescence, and 24 quantitative traits
+- **Neural network** (16→20→8) with Hebbian + reward-modulated learning
+- **Metabolism:** basal, movement, neural computation, sensing, signaling, reproduction, temperature stress
+- **Reproduction:** asexual (mutation) and sexual (crossover + mutation)
+- **Multicellularity:** colonies with shared energy, division of labor (5 roles), budding, apoptosis
+- **Predation:** aggression/strength-based kills
+- **Environment:** temperature gradient, day/night cycle, food regeneration, nutrient recycling from decomposition
+- **Species detection** by genome-distance clustering
+- **Evolution of evolvability:** mutation rate and learning rate are evolvable traits
 
-## Advanced ALife features (research-driven)
+## Advanced Features
 
-- **DNA genome** — every organism carries an A/C/G/T DNA sequence. DNA regions encode morphology (body plan, color, bioluminescence) and traits via a FormGrow-inspired codon mapping.
-- **Major transitions in individuality** — organisms with high adhesion bond into multicellular colonies. Colonies share energy, coordinate, and reproduce by **budding propagules** — the colony becomes the unit of selection (fraternal transition, DISHTINY-style).
-- **Division of labor** — colony cells differentiate into roles: gatherer, reproducer, defender, signaler. Role is encoded in DNA and expressed as distinct 3D morphology.
-- **Evolution of evolvability** — the mutation rate and learning rate are themselves evolvable traits (Tokyo Type 2 open-endedness); lineages that mutate adaptively outcompete static ones.
-- **Altruism & apoptosis** — cells self-sacrifice (apoptosis) to return energy to the colony; cooperation governs energy tithing to the colony pool.
-- **Predation** — aggression/strength determine kill probability between organisms and colonies.
-- **Group selection** — groupSelectionWeight balances individual vs colony-level fitness.
-- **Species** — counted by clustering organisms whose genomes are close.
+- **Save/load:** full simulation state serialization including RNG state; reproducible continuation
+- **Experiments:** 6 preconfigured experiments (resource scarcity, predator-prey, multicellularity, cooperation, mutation-rate evolution, environmental adaptation) with A/B comparison
+- **3D visualizer:** DNA-generated organism morphologies (blob/segmented/star/spiral/rays), colony bond lines, role-based coloring, organism inspector
+- **Mobile compatible:** responsive UI, touch controls, WebGL hardening
 
-## 3D web interface
-
-The live site renders organisms as DNA-generated 3D models (Three.js, InstancedMesh):
-- Each organism's body plan (blob / segmented / star / spiral / rays), segments, limbs, color, and glow are procedurally generated from its DNA.
-- Colony members are linked by bond lines; cell color encodes role (gatherer/reproducer/defender/signal).
-- Tap an organism to inspect its DNA, genes, role, colony, and generation.
-
-## Run
+## Quick Start
 
 ```bash
 npm install
 npm run typecheck
 npm test
 
-# Headless run, prints final stats
+# Headless run (prints final stats)
 npm start -- --ticks 500 --population 1000
 
-# Live 3D web interface (served by any static host / GitHub Pages)
-# open index.html in a browser
+# Save/load test
+npx tsx -e "import { Simulation } from './src/simulation.js'; import { saveToJSON, loadFromJSON } from './src/serialization.js'; const s = new Simulation({seed:1,width:40,height:40,initialPopulation:50}); const s2 = loadFromJSON(saveToJSON(s)); console.log('Restored:', s2.stats().population);"
+
+# Run an experiment
+npx tsx -e "import { runExperiment } from './src/experiments.js'; console.log(JSON.stringify(runExperiment('multicellularity').finalStats, null, 2))"
 ```
 
-### CLI options
+### CLI Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -56,12 +52,28 @@ npm start -- --ticks 500 --population 1000
 | `--population` | 300 | Initial organisms |
 | `--live` | true | Terminal visualization |
 
+## Documentation
+
+| File | Contents |
+|------|----------|
+| `ARCHITECTURE.md` | System design, module dependencies, rendering architecture |
+| `SCIENTIFIC_MODEL.md` | Biological foundations, abstractions, limitations, references |
+| `ROADMAP.md` | Completed, in-progress, planned features; acceptance criteria |
+| `EXPERIMENTS.md` | Experiment presets, running, reproducibility, adding new experiments |
+| `PERFORMANCE.md` | Benchmarks, bottlenecks, optimization recommendations |
+| `CHANGELOG.md` | Release history |
+
+## Live Site
+
+https://billy2112.github.io/Project-DIGITAL-SPECIES/ (GitHub Pages, served from `main`)
+
 ## Scripts
 
 - `npm run typecheck` — TypeScript strict check
 - `npm test` — test suite
 - `npm start` — headless simulation
+- `npm run sim` — live terminal visualization
 
-## Live site
+## Scientific Integrity
 
-https://billy2112.github.io/Project-DIGITAL-SPECIES/ (GitHub Pages, served from `main`)
+Simulated organisms are not conscious or sentient. Simulated intelligence is not equivalent to animal or human intelligence. All metrics are calculated from actual simulation data. Extinction, stasis, and simplification are valid evolutionary outcomes — complexity increase is not guaranteed.
