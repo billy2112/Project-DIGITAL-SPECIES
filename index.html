@@ -3,130 +3,185 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Project DIGITAL SPECIES — 3D Artificial Life</title>
+<title>Project DIGITAL SPECIES — Artificial Life Observatory</title>
 <style>
+  /* === Reset & base === */
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
-    background: #05070a; color: #e8e8ea; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-  #gl-canvas { display: block; width: 100vw; height: 100vh; background: #05070a; touch-action: none; }
-  header { position: absolute; top: 0; left: 0; right: 0; height: 56px;
-    background: linear-gradient(180deg, rgba(0,0,0,0.6), transparent);
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 14px; z-index: 40; border-bottom: 1px solid rgba(255,255,255,0.06); }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: 0.06em; font-size: 15px; color: #22c55e; }
-  .brand .dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 10px #22c55e; }
-  .hud-row { display: flex; gap: 10px; font-size: 11.5px; flex-wrap: wrap; }
-  .stat { display: flex; flex-direction: column; gap: 2px; }
-  .stat .k { color: #8a93a5; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; }
-  .stat .v { color: #fff; font-variant-numeric: tabular-nums; font-weight: 700; }
+    background: #06080c; color: #cfd8e0; font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace; }
+  #gl-canvas { display: block; width: 100vw; height: 100vh; background: #030508; touch-action: none; }
 
-  .controls { position: absolute; bottom: 0; left: 0; right: 0;
-    background: rgba(8, 10, 14, 0.85); border-top: 1px solid rgba(255,255,255,0.08);
-    padding: 10px 14px 14px; z-index: 40; display: flex; flex-direction: column; gap: 10px; }
-  .ctrl-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  button { flex: 1 1 110px; min-width: 95px; padding: 9px 12px; border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.07);
-    color: #e8e8ea; font-size: 13px; font-weight: 700; cursor: pointer; }
-  button:active { background: rgba(255,255,255,0.18); }
-  button.primary { background: #22c55e; border-color: #22c55e; color: #000; }
-  button.primary:active { background: #4ade80; }
-  .ctrl-field { display: flex; flex-direction: column; gap: 4px; min-width: 95px; flex: 1; }
-  .ctrl-field label { font-size: 10px; color: #8a93a5; text-transform: uppercase; letter-spacing: 0.05em; }
-  input { width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
-    background: rgba(0,0,0,0.35); color: #e8e8ea; font-size: 13px; }
-  input[type=range] { accent-color: #22c55e; height: 6px; padding: 0; background: none; }
+  /* === Layout shells === */
+  .shell { position: absolute; pointer-events: none; top: 0; left: 0; width: 100%; height: 100%; }
+  .shell > * { pointer-events: auto; }
 
-  /* inspector sheet */
-  #inspector { position: absolute; top: 60px; right: 0; width: 320px; height: calc(100vh - 60px - 120px);
-    background: rgba(10, 12, 18, 0.92); border-left: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(10px); padding: 16px; z-index: 40; display: flex; flex-direction: column; gap: 9px;
-    transform: translateX(100%); transition: transform 0.25s ease; overflow-y: auto; }
-  #inspector.open { transform: translateX(0); }
-  #inspector.empty { pointer-events: none; opacity: 0.55; }
-  #inspector h2 { margin: 0 0 8px; font-size: 15px; color: #22c55e; display: flex; gap: 8px; align-items: center; }
-  #inspector .tag { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,0.1); color: #22c55e; }
-  .sel-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 6px 0; }
-  .sel-row .k { color: #8a93a5; font-size: 11px; }
-  .sel-row .v { color: #fff; font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; word-break: break-all; }
-  .hint { margin-top: auto; font-size: 11px; color: #6b7486; font-style: italic; }
+  /* === Top bar === */
+  header { position: absolute; top: 0; left: 0; right: 0; height: 44px;
+    border-bottom: 1px solid #1c2430; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; z-index: 50; background: rgba(6, 8, 12, 0.8); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.12em; font-size: 13px; color: #39ff14; }
+  .brand .dot { width: 7px; height: 7px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 8px #39ff14;
+    animation: pulse 2.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 6px #39ff14; } 50% { opacity: 0.55; box-shadow: 0 0 14px #39ff14; } }
+  .sysbar { display: flex; gap: 18px; font-size: 11px; }
+  .sys .k { color: #647084; text-transform: uppercase; letter-spacing: 0.08em; font-size: 9px; }
+  .sys .v { color: #cfd8e0; font-variant-numeric: tabular-nums; }
 
-  /* paused overlay */
-  #overlay-paused { position: absolute; inset: 0; background: rgba(6, 7, 10, 0.8);
-    display: none; align-items: center; justify-content: center; z-index: 50;
-    backdrop-filter: blur(4px); flex-direction: column; gap: 14px; }
+  /* === Panels === */
+  .panel { position: absolute; border: 1px solid #1c2430; background: rgba(6, 8, 12, 0.85);
+    color: #cfd8e0; font-size: 12px; }
+  .panel h3 { margin: 0 0 10px; padding: 8px 12px; border-bottom: 1px solid #1c2430;
+    font-size: 11px; color: #8fa0b8; text-transform: uppercase; letter-spacing: 0.1em; display: flex; justify-content: space-between; align-items: center; }
+
+  /* Left inspector */
+  #panel-inspect { top: 48px; left: 16px; width: 300px; bottom: 96px; overflow-y: auto; z-index: 50;
+    transform: translateX(-110%); transition: transform 0.22s ease; }
+  #panel-inspect.open { transform: translateX(0); }
+  .inspect-row { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid #121822;
+    padding: 6px 10px; font-size: 11.5px; }
+  .inspect-row .k { color: #647084; }
+  .inspect-row .v { color: #cfd8e0; font-variant-numeric: tabular-nums; text-align: right; word-break: break-all; }
+  .inspect-empty { padding: 14px 10px; color: #647084; font-size: 11px; font-style: italic; }
+  .inspect-tag { font-size: 9px; padding: 2px 8px; border: 1px solid #2a3442; border-radius: 3px; color: #39ff14; }
+
+  /* Right analytics */
+  #panel-analytics { top: 48px; right: 16px; width: 300px; bottom: 96px; overflow-y: auto; z-index: 50;
+    transform: translateX(110%); transition: transform 0.22s ease; }
+  #panel-analytics.open { transform: translateX(0); }
+  .stat-row { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid #121822;
+    padding: 7px 10px; font-size: 11.5px; }
+  .stat-row .k { color: #647084; }
+  .stat-row .v { color: #cfd8e0; font-variant-numeric: tabular-nums; text-align: right; }
+
+  /* Bottom transport bar */
+  footer { position: absolute; bottom: 0; left: 0; right: 0; height: 88px;
+    border-top: 1px solid #1c2430; display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; z-index: 50; background: rgba(6, 8, 12, 0.85); }
+  .transport { display: flex; align-items: center; gap: 14px; }
+  button { padding: 8px 14px; border-radius: 3px; border: 1px solid #2a3442; background: #0c121c;
+    color: #cfd8e0; font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 0.05em; }
+  button:active { background: #161e2c; }
+  button.primary { background: #39ff14; border-color: #39ff14; color: #000; }
+  button.primary:active { background: #5cff4d; }
+  button.secondary { background: #0c121c; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .speed-wrap { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8fa0b8; }
+  input[type=range] { accent-color: #39ff14; width: 110px; height: 4px; background: none; }
+
+  /* === Overlays === */
+  #overlay-paused { position: absolute; inset: 0; background: rgba(6, 8, 12, 0.75);
+    display: none; align-items: center; justify-content: center; z-index: 60; flex-direction: column; gap: 12px; }
   #overlay-paused.show { display: flex; }
-  #overlay-paused .big { font-size: 36px; font-weight: 900; color: #fff; letter-spacing: 0.1em; }
-  #overlay-paused .sub { font-size: 15px; color: #9aa3b4; }
+  #overlay-paused .big { font-size: 34px; font-weight: 800; color: #fff; letter-spacing: 0.12em; }
+  #overlay-paused .sub { font-size: 13px; color: #8fa0b4; }
 
-  @media (max-width: 760px) {
-    #inspector { position: fixed; bottom: 130px; left: 0; right: 0; top: auto; width: auto; height: 185px;
-      border: none; border-top: 1px solid rgba(255,255,255,0.08); border-radius: 16px 16px 0 0;
-      transform: translateY(100%); transition: transform 0.25s ease; overflow-y: visible; }
-    #inspector.open { transform: translateY(0); }
-    .hud-row { gap: 8px; font-size: 10.5px; }
-    .ctrl-row { gap: 8px; }
-    button { min-width: 80px; padding: 8px 10px; font-size: 12px; }
+  #overlay-error { position: absolute; inset: 0; background: #0a0d15;
+    display: none; align-items: center; justify-content: center; z-index: 70;
+    flex-direction: column; gap: 12px; padding: 24px; text-align: center; }
+  #overlay-error.show { display: flex; }
+  #overlay-error .big { color: #ff4d4d; font-weight: 800; font-size: 16px; }
+  #overlay-error .sub { color: #8fa0b4; font-size: 12px; max-width: 320px; line-height: 1.5; }
+  #overlay-error button { margin-top: 14px; background: #39ff14; border-color: #39ff14; color: #000; }
+
+  /* Control chip bar (experiment / save / load) */
+  .chips { position: absolute; top: 104px; left: 16px; right: 16px; display: flex; gap: 8px;
+    flex-wrap: wrap; z-index: 50; pointer-events: auto; }
+  .chip { padding: 6px 12px; border: 1px solid #2a3442; background: #0c121c; color: #cfd8e0;
+    font-size: 11px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
+  .chip:active { background: #161e2c; }
+  .chip.active { border-color: #39ff14; color: #39ff14; }
+
+  /* === Responsive === */
+  @media (max-width: 900px) {
+    #panel-inspect, #panel-analytics { position: fixed; bottom: 88px; left: 0; right: 0; top: auto; width: auto; height: 150px;
+      border: none; border-top: 1px solid #1c2430; border-radius: 6px 6px 0 0; transform: translateY(110%); }
+    #panel-inspect.open, #panel-analytics.open { transform: translateY(0); }
+    #panel-inspect { left: 16px; right: 16px; }
+    #panel-analytics { left: 16px; right: 16px; }
+    .chips { top: 10px; left: 10px; right: 10px; justify-content: center; }
+    footer { height: 104px; flex-direction: column; gap: 10px; padding: 10px 12px; }
+    .transport { gap: 10px; }
+    .speed-wrap { font-size: 10px; }
+    button { min-width: 70px; padding: 7px 10px; font-size: 11px; }
   }
 </style>
 </head>
 <body>
 <canvas id="gl-canvas"></canvas>
 
-<header>
-  <div class="brand"><div class="dot"></div>Project DIGITAL SPECIES</div>
-  <div class="hud-row">
-    <div class="stat"><div class="k">Tick</div><div class="v" id="stat-tick">0</div></div>
-    <div class="stat"><div class="k">Day</div><div class="v" id="stat-day">1</div></div>
-    <div class="stat"><div class="k">Population</div><div class="v" id="stat-pop">0</div></div>
-    <div class="stat"><div class="k">Colonies</div><div class="v" id="stat-colonies">0</div></div>
-    <div class="stat"><div class="k">Births</div><div class="v" id="stat-births">0</div></div>
-    <div class="stat"><div class="k">Colony Buds</div><div class="v" id="stat-buds">0</div></div>
-    <div class="stat"><div class="k">Deaths</div><div class="v" id="stat-deaths">0</div></div>
-    <div class="stat"><div class="k">Apoptosis</div><div class="v" id="stat-apoptosis">0</div></div>
-    <div class="stat"><div class="k">Kills</div><div class="v" id="stat-kills">0</div></div>
-    <div class="stat"><div class="k">Colony Deaths</div><div class="v" id="stat-colony-deaths">0</div></div>
-    <div class="stat"><div class="k">Species</div><div class="v" id="stat-species">0</div></div>
-    <div class="stat"><div class="k">Avg Energy</div><div class="v" id="stat-energy">0</div></div>
-    <div class="stat"><div class="k">Avg Size</div><div class="v" id="stat-size">0</div></div>
-    <div class="stat"><div class="k">Strength</div><div class="v" id="stat-strength">0</div></div>
-    <div class="stat"><div class="k">Aggression</div><div class="v" id="stat-aggression">0</div></div>
-    <div class="stat"><div class="k">Cooperation</div><div class="v" id="stat-cooperation">0</div></div>
-    <div class="stat"><div class="k">Mutation Rate</div><div class="v" id="stat-mutation">0</div></div>
-  </div>
-</header>
+<div class="shell">
+  <header>
+    <div class="brand"><div class="dot"></div>Project DIGITAL SPECIES</div>
+    <div class="sysbar">
+      <div class="sys"><div class="k">Mode</div><div class="v" id="sys-mode">3D</div></div>
+      <div class="sys"><div class="k">State</div><div class="v" id="sys-state" style="color:#39ff14">RUNNING</div></div>
+      <div class="sys"><div class="k">FPS</div><div class="v" id="sys-fps">0</div></div>
+      <div class="sys"><div class="k">Tick</div><div class="v" id="sys-tick">0</div></div>
+    </div>
+  </header>
 
-<div class="controls">
-  <div class="ctrl-row">
+  <div class="chips">
+    <button class="chip" id="chip-inspect">Inspector</button>
+    <button class="chip" id="chip-analytics">Analytics</button>
+    <button class="chip" id="chip-experiment">Experiment</button>
+    <button class="chip" id="chip-save">Save</button>
+    <button class="chip" id="chip-load">Load</button>
+  </div>
+
+  <div id="panel-inspect" class="panel">
+    <h3><span>Organism</span><span id="inspect-tag" class="inspect-tag">—</span></h3>
+    <div id="inspect-content">
+      <div class="inspect-empty">Tap an organism in the world to inspect its DNA, genes, and colony membership.</div>
+    </div>
+  </div>
+
+  <div id="panel-analytics" class="panel">
+    <h3><span>Population Stats</span><span id="analytics-tag">live</span></h3>
+    <div id="analytics-content">
+      <div class="stat-row"><span class="k">Tick</span><span class="v" id="stat-tick">0</span></div>
+      <div class="stat-row"><span class="k">Day</span><span class="v" id="stat-day">1</span></div>
+      <div class="stat-row"><span class="k">Population</span><span class="v" id="stat-pop">0</span></div>
+      <div class="stat-row"><span class="k">Colonies</span><span class="v" id="stat-colonies">0</span></div>
+      <div class="stat-row"><span class="k">Births</span><span class="v" id="stat-births">0</span></div>
+      <div class="stat-row"><span class="k">Colony Buds</span><span class="v" id="stat-buds">0</span></div>
+      <div class="stat-row"><span class="k">Deaths</span><span class="v" id="stat-deaths">0</span></div>
+      <div class="stat-row"><span class="k">Apoptosis</span><span class="v" id="stat-apoptosis">0</span></div>
+      <div class="stat-row"><span class="k">Kills</span><span class="v" id="stat-kills">0</span></div>
+      <div class="stat-row"><span class="k">Species</span><span class="v" id="stat-species">0</span></div>
+      <div class="stat-row"><span class="k">Avg Energy</span><span class="v" id="stat-energy">0</span></div>
+      <div class="stat-row"><span class="k">Avg Size</span><span class="v" id="stat-size">0</span></div>
+      <div class="stat-row"><span class="k">Strength</span><span class="v" id="stat-strength">0</span></div>
+      <div class="stat-row"><span class="k">Aggression</span><span class="v" id="stat-aggression">0</span></div>
+      <div class="stat-row"><span class="k">Cooperation</span><span class="v" id="stat-cooperation">0</span></div>
+      <div class="stat-row"><span class="k">Mutation Rate</span><span class="v" id="stat-mutation">0</span></div>
+    </div>
+  </div>
+
+  <div id="overlay-paused">
+    <div class="big">PAUSED</div>
+    <div class="sub">Resume to continue the simulation</div>
+  </div>
+
+  <div id="overlay-error">
+    <div class="big" id="error-title">Error</div>
+    <div class="sub" id="error-msg"></div>
+    <button id="error-reset">Reset</button>
+  </div>
+</div>
+
+<footer>
+  <div class="transport">
     <button class="primary" id="btn-play">Pause</button>
-    <button id="btn-reset">Reset world</button>
-    <div class="ctrl-field"><label>Seed</label><input id="inp-seed" type="number" value=""></div>
-    <div class="ctrl-field"><label>Population</label><input id="inp-pop" type="number" value=""></div>
-    <div class="ctrl-field"><label>World (WxH)</label><input id="inp-world" type="text" value=""></div>
-    <div class="ctrl-field"><label>Speed</label><input id="inp-speed" type="range" min="1" max="90" value="50"></div>
+    <button id="btn-step">Step</button>
+    <button id="btn-reset">Reset World</button>
   </div>
-</div>
-
-<div id="inspector">
-  <h2>Organism <span id="sel-id">—</span><span id="sel-colony" class="tag">—</span></h2>
-  <div class="sel-row"><span class="k">Role</span><span class="v" id="sel-role">—</span></div>
-  <div class="sel-row"><span class="k">DNA</span><span class="v" id="sel-dna">—</span></div>
-  <div class="sel-row"><span class="k">Energy</span><span class="v" id="sel-energy">—</span></div>
-  <div class="sel-row"><span class="k">Age</span><span class="v" id="sel-age">—</span></div>
-  <div class="sel-row"><span class="k">Generation</span><span class="v" id="sel-gen">—</span></div>
-  <div class="sel-row"><span class="k">Size</span><span class="v" id="sel-size">—</span></div>
-  <div class="sel-row"><span class="k">Strength</span><span class="v" id="sel-strength">—</span></div>
-  <div class="sel-row"><span class="k">Aggression</span><span class="v" id="sel-aggression">—</span></div>
-  <div class="sel-row"><span class="k">Altruism</span><span class="v" id="sel-altruism">—</span></div>
-  <div class="sel-row"><span class="k">Biolum.</span><span class="v" id="sel-bio">—</span></div>
-  <div class="sel-row"><span class="k">Mutation Rate</span><span class="v" id="sel-mutation">—</span></div>
-  <div class="sel-row"><span class="k">Body Plan</span><span class="v" id="sel-plan">—</span></div>
-  <div class="hint">Tap an organism to inspect its DNA &amp; 3D morphology. Colors = cell role. Lines = colony bonds.</div>
-</div>
-
-<div id="overlay-paused" class="hidden">
-  <div class="big">PAUSED</div>
-  <div class="sub">Tap Resume to continue the simulation</div>
-</div>
+  <div class="speed-wrap">
+    <span class="k">Speed</span>
+    <input id="inp-speed" type="range" min="1" max="90" value="50">
+    <span class="v" id="speed-val">50</span>
+  </div>
+  <div style="font-size: 10px; color: #647084;">WebGL 3D &nbsp;|&nbsp; DNA genome &nbsp;|&nbsp; Hebbian NN &nbsp;|&nbsp; Colonies &nbsp;|&nbsp; Deterministic</div>
+</footer>
 
 <script type="module" src="./web3d.js"></script>
 </body>

@@ -7,16 +7,21 @@ import {
   dnaString,
 } from "./dist/dna3d.js";
 import { Simulation } from "./dist/simulation.js";
+import { genomeHashColor } from "./dist/genome.js";
+import { saveToJSON, loadFromJSON } from "./dist/serialization.js";
+import { runExperiment, getExperimentNames } from "./dist/experiments.js";
 
-// ---- DOM ----
+// ---- DOM refs ----
 const canvas = document.getElementById("gl-canvas");
 const els = {
   play: document.getElementById("btn-play"),
+  step: document.getElementById("btn-step"),
   reset: document.getElementById("btn-reset"),
   seed: document.getElementById("inp-seed"),
   pop: document.getElementById("inp-pop"),
   world: document.getElementById("inp-world"),
   speed: document.getElementById("inp-speed"),
+  speedVal: document.getElementById("speed-val"),
   tick: document.getElementById("stat-tick"),
   popStat: document.getElementById("stat-pop"),
   colonies: document.getElementById("stat-colonies"),
@@ -35,30 +40,37 @@ const els = {
   aggression: document.getElementById("stat-aggression"),
   cooperation: document.getElementById("stat-cooperation"),
   mutation: document.getElementById("stat-mutation"),
-  inspector: document.getElementById("inspector"),
-  selId: document.getElementById("sel-id"),
-  selColony: document.getElementById("sel-colony"),
-  selRole: document.getElementById("sel-role"),
-  selDna: document.getElementById("sel-dna"),
-  selEnergy: document.getElementById("sel-energy"),
-  selAge: document.getElementById("sel-age"),
-  selGen: document.getElementById("sel-gen"),
-  selSize: document.getElementById("sel-size"),
-  selStrength: document.getElementById("sel-strength"),
-  selAggression: document.getElementById("sel-aggression"),
-  selAltruism: document.getElementById("sel-altruism"),
-  selBio: document.getElementById("sel-bio"),
-  selMutation: document.getElementById("sel-mutation"),
-  selPlan: document.getElementById("sel-plan"),
+  sysMode: document.getElementById("sys-mode"),
+  sysState: document.getElementById("sys-state"),
+  sysFps: document.getElementById("sys-fps"),
+  sysTick: document.getElementById("sys-tick"),
+  inspectTag: document.getElementById("inspect-tag"),
+  inspectContent: document.getElementById("inspect-content"),
+  analyticsContent: document.getElementById("analytics-content"),
+  panelInspect: document.getElementById("panel-inspect"),
+  panelAnalytics: document.getElementById("panel-analytics"),
+  chipInspect: document.getElementById("chip-inspect"),
+  chipAnalytics: document.getElementById("chip-analytics"),
+  chipExperiment: document.getElementById("chip-experiment"),
+  chipSave: document.getElementById("chip-save"),
+  chipLoad: document.getElementById("chip-load"),
   paused: document.getElementById("overlay-paused"),
+  error: document.getElementById("overlay-error"),
+  errorTitle: document.getElementById("error-title"),
+  errorMsg: document.getElementById("error-msg"),
+  errorReset: document.getElementById("error-reset"),
 };
 
+// ---- State ----
 let sim = null;
 let running = true;
 let selectedId = null;
 let last = performance.now();
 let acc = 0;
 let frame = 0;
+let fpsAcc = 0;
+let fpsFrames = 0;
+let fps = 0;
 let msPerTick = 30;
 const MAX_STEPS = 8;
 
@@ -77,16 +89,19 @@ const ROLE_COLORS = {
   signal: 0x06b6d4,
 };
 
+let inspectOpen = false;
+let analyticsOpen = false;
+
 // ---- Three.js ----
 let renderer, scene, camera, controls;
 let grid, foodMesh;
-let organGroups = new Map(); // morphotypeKey -> InstancedMesh group data
-let bondLines = null; // LineSegments showing colony structure
+let organGroups = new Map();
+let bondLines = null;
 let webglFailed = false;
 
 const errOverlay = document.createElement("div");
-errOverlay.style.cssText = "position:absolute;inset:0;background:#06080c;color:#fff;display:none;align-items:center;justify-content:center;z-index:60;font-family:sans-serif;flex-direction:column;gap:10px;padding:20px;text-align:center;";
-errOverlay.innerHTML = `<div style="color:#ef4444;font-weight:700">WebGL unavailable on this device</div><div style="color:#8a93a5;font-size:13px">The 3D ecosystem could not initialize. Try a different browser or device.</div>`;
+errOverlay.style.cssText = "position:absolute;inset:0;background:#0a0d15;color:#fff;display:none;align-items:center;justify-content:center;z-index:70;flex-direction:column;gap:12px;padding:24px;text-align:center;";
+errOverlay.innerHTML = `<div style="color:#ff4d4d;font-weight:800;font-size:16px" id="err-title">Error</div><div style="color:#8fa0b4;font-size:12px;max-width:320px;line-height:1.5" id="err-msg"></div><button style="margin-top:14px;padding:8px 14px;border-radius:3px;border:none;background:#39ff14;color:#000;font-weight:700;cursor:pointer">Reset</button>`;
 document.body.appendChild(errOverlay);
 
 function initThree() {
@@ -98,13 +113,13 @@ function initThree() {
     renderer.shadowMap.type = THREE.PCFShadowMap;
   } catch (e) {
     webglFailed = true;
-    errOverlay.style.display = "flex";
+    showError("WebGL unavailable on this device. Try another browser.");
     return;
   }
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x06080c);
-  scene.fog = new THREE.FogExp2(0x06080c, 0.012);
+  scene.background = new THREE.Color(0x030508);
+  scene.fog = new THREE.FogExp2(0x030508, 0.012);
 
   camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / Math.max(canvas.clientHeight, 1), 0.5, 400);
   camera.position.set(90, 60, 90);
@@ -132,9 +147,7 @@ function initThree() {
   scene.add(grid);
 
   const foodGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-  const foodMat = new THREE.MeshStandardMaterial({
-    color: 0x22c55e, emissive: 0x113311, emissiveIntensity: 0.5,
-  });
+  const foodMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x113311, emissiveIntensity: 0.5 });
   foodMesh = new THREE.InstancedMesh(foodGeo, foodMat, 8192);
   foodMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   foodMesh.castShadow = true;
@@ -227,24 +240,6 @@ function buildGeometry(parts) {
   return geo;
 }
 
-function getGroup(key, morpho) {
-  let g = organGroups.get(key);
-  if (g) return g;
-  const parts = generateModel(morpho, 60, 1);
-  const geometry = buildGeometry(parts);
-  const mat = new THREE.MeshStandardMaterial({
-    vertexColors: true, roughness: 0.6, metalness: 0.1,
-  });
-  const mesh = new THREE.InstancedMesh(geometry, mat, 8192);
-  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
-  g = { key, mesh, parts, mat, matrices: [], colors: [], count: 0, dummy: new THREE.Object3D() };
-  organGroups.set(key, g);
-  return g;
-}
-
 function colonyColor(colonyId) {
   let h = 2166136261 >>> 0;
   const s = String(colonyId);
@@ -255,8 +250,25 @@ function colonyColor(colonyId) {
   return new THREE.Color().setHSL(h % 360, 0.5, 0.55);
 }
 
+function getGroup(key, morpho) {
+  let g = organGroups.get(key);
+  if (g) return g;
+  const parts = generateModel(morpho, 60, 1);
+  const geometry = buildGeometry(parts);
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1 });
+  const mesh = new THREE.InstancedMesh(geometry, mat, 8192);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  g = { key, mesh, parts, mat, matrices: [], colors: [], count: 0, dummy: new THREE.Object3D() };
+  organGroups.set(key, g);
+  return g;
+}
+
 function updateOrganisms() {
   organGroups.forEach((g) => (g.count = 0));
+  const foodInstances = [];
   const state = sim.getState();
   const W = sim.world.width;
 
@@ -265,7 +277,6 @@ function updateOrganisms() {
 
   const snap = state.snapshot;
   const food = snap.food;
-  const foodInstances = [];
   for (let i = 0; i < food.length; i++) {
     const f = food[i];
     if (f <= 0.5) continue;
@@ -289,7 +300,6 @@ function updateOrganisms() {
     dummy.updateMatrix();
     g.matrices[idx] = dummy.matrix.elements.slice();
 
-    // role-based color, tinted by colony hue for group identity
     const rc = ROLE_COLORS[org.role] ?? 0xffffff;
     let base = new THREE.Color(rc);
     if (org.colonyId !== null) {
@@ -299,7 +309,6 @@ function updateOrganisms() {
     g.colors[idx] = [base.r, base.g, base.b];
   }
 
-  // colony bonds: lines from centroid to each member
   const orgById = new Map();
   for (const o of state.organisms) orgById.set(o.id, o);
   const MAX_BONDS = 2048;
@@ -350,7 +359,6 @@ function updateOrganisms() {
   foodMesh.instanceMatrix.needsUpdate = true;
   foodMesh.instanceColor.needsUpdate = true;
 
-  // update bond lines (reuse buffer to avoid GC pressure)
   const linePos = bondLines.geometry.attributes.position;
   const needed = bondPos.length;
   if (!linePos || linePos.count * 3 < needed) {
@@ -383,33 +391,52 @@ function drawHud() {
   els.aggression.textContent = st.avgAggression.toFixed(2);
   els.cooperation.textContent = st.avgCooperation.toFixed(2);
   els.mutation.textContent = st.avgMutationRate.toFixed(4);
+
+  els.sysTick.textContent = st.tick.toLocaleString();
+  if (frame % 30 === 0) {
+    const alive = sim.organisms.filter((o) => !o.dead);
+    const col = alive.length > 0 ? alive[0] : null;
+    if (col) {
+      const t = col.genome.traits;
+      els.inspectTag.textContent = `id ${col.id}`;
+    }
+  }
 }
 
-function drawInspector() {
+function updateInspector() {
   if (!sim) return;
   const org = sim.organisms.find((o) => o.id === selectedId);
   if (!org) {
-    els.inspector.classList.add("empty");
+    els.inspectContent.innerHTML = `<div style="padding:14px 10px;color:#647084;font-size:11px;font-style:italic;">Tap an organism in the world to inspect its DNA, genes, and colony membership.</div>`;
     return;
   }
-  els.inspector.classList.remove("empty");
   const t = org.genome.traits;
   const morpho = dnaToMorphotype(org.genome.dna);
   const colony = org.colonyId !== null ? sim.colonies.get(org.colonyId) : null;
-  els.selId.textContent = org.id;
-  els.selColony.textContent = colony ? colony.id.toString() : "— (unicellular)";
-  els.selRole.textContent = org.role;
-  els.selDna.textContent = dnaString(org.genome.dna);
-  els.selEnergy.textContent = org.energy.toFixed(1);
-  els.selAge.textContent = org.age.toString();
-  els.selGen.textContent = org.generation.toString();
-  els.selSize.textContent = t.size.toFixed(2);
-  els.selStrength.textContent = t.strength.toFixed(2);
-  els.selAggression.textContent = t.aggression.toFixed(2);
-  els.selAltruism.textContent = t.altruism.toFixed(2);
-  els.selBio.textContent = t.bioluminescence.toFixed(2);
-  els.selMutation.textContent = t.evolvableMutationRate.toFixed(4);
-  els.selPlan.textContent = `${morpho.bodyPlan} · ${morpho.segmentCount} seg · ${morpho.limbPairs} limbs · colony: ${colony ? colony.memberIds.length : 0} cells`;
+  const rows = [
+    ["Role", org.role],
+    ["DNA", dnaString(org.genome.dna)],
+    ["Energy", org.energy.toFixed(1)],
+    ["Age", org.age],
+    ["Generation", org.generation],
+    ["Size", t.size.toFixed(2)],
+    ["Strength", t.strength.toFixed(2)],
+    ["Aggression", t.aggression.toFixed(2)],
+    ["Altruism", t.altruism.toFixed(2)],
+    ["Biolum.", t.bioluminescence.toFixed(2)],
+    ["Mutation", t.evolvableMutationRate.toFixed(4)],
+    ["Body plan", `${morpho.bodyPlan} · ${morpho.segmentCount} seg · ${morpho.limbPairs} limbs`],
+    ["Colony", colony ? colony.id.toString() : "— (unicellular)"],
+  ];
+  let html = "";
+  for (const [k, v] of rows) {
+    html += `<div class="inspect-row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  }
+  els.inspectContent.innerHTML = html;
+}
+
+function drawInspector() {
+  updateInspector();
 }
 
 function onPointerDown(e) {
@@ -434,13 +461,12 @@ function onPointerDown(e) {
     }
     selectedId = best ? best.id : null;
   }
+  updateInspector();
 }
 
 function animate(now) {
   requestAnimationFrame(animate);
-  if (webglFailed) {
-    return;
-  }
+  if (webglFailed) return;
   try {
     const dt = Math.min(now - last, 200);
     last = now;
@@ -465,6 +491,16 @@ function animate(now) {
       drawHud();
       drawInspector();
     }
+
+    // FPS
+    fpsAcc += dt;
+    fpsFrames++;
+    if (fpsAcc >= 1000) {
+      fps = Math.round((fpsFrames * 1000) / fpsAcc);
+      fpsAcc = 0;
+      fpsFrames = 0;
+      els.sysFps.textContent = fps;
+    }
     frame++;
   } catch (e) {
     showError("Render error: " + (e && e.message ? e.message : String(e)));
@@ -473,10 +509,11 @@ function animate(now) {
 
 function showError(msg) {
   webglFailed = true;
-  errOverlay.innerHTML = `<div style="color:#ef4444;font-weight:700">Simulation error</div><div style="color:#8a93a5;font-size:12px;word-wrap:break-word;max-width:300px">${msg}</div><button style="margin-top:10px;padding:8px 14px;border-radius:8px;border:none;background:#22c55e;color:#000;font-weight:700;cursor:pointer">Reset</button>`;
+  document.getElementById("err-title").textContent = "Error";
+  document.getElementById("err-msg").textContent = msg;
   errOverlay.style.display = "flex";
   const btn = errOverlay.querySelector("button");
-  if (btn) btn.onclick = () => {
+  btn.onclick = () => {
     errOverlay.style.display = "none";
     webglFailed = false;
     running = true;
@@ -491,15 +528,25 @@ function showError(msg) {
   };
 }
 
-let uiBound = false;
-
 function bindUI() {
-  if (uiBound) return;
-  uiBound = true;
   els.play.addEventListener("click", () => {
     running = !running;
     els.play.textContent = running ? "Pause" : "Resume";
+    els.sysState.textContent = running ? "RUNNING" : "PAUSED";
+    els.sysState.style.color = running ? "#39ff14" : "#ff8c8c";
     els.paused.classList.toggle("hidden", running);
+    els.paused.classList.toggle("show", !running);
+  });
+  els.step.addEventListener("click", () => {
+    if (sim) {
+      try { sim.step(); } catch (e) {
+        showError("Simulation error: " + (e && e.message ? e.message : String(e)));
+        return;
+      }
+      updateOrganisms();
+      drawHud();
+      drawInspector();
+    }
   });
   els.reset.addEventListener("click", () => {
     CFG.seed = parseInt(els.seed.value || Date.now(), 10) || Date.now();
@@ -515,6 +562,101 @@ function bindUI() {
     const v = parseInt(e.target.value || 50, 10);
     msPerTick = 120 - v * 1.1;
     if (msPerTick < 4) msPerTick = 4;
+    els.speedVal.textContent = v;
+  });
+  els.speed.addEventListener("change", (e) => {
+    const v = parseInt(e.target.value || 50, 10);
+    els.speedVal.textContent = v;
+  });
+
+  // Panel toggles
+  els.chipInspect.addEventListener("click", () => {
+    inspectOpen = !inspectOpen;
+    analyticsOpen = false;
+    els.panelInspect.classList.toggle("open", inspectOpen);
+    els.panelAnalytics.classList.toggle("open", false);
+    els.chipInspect.classList.toggle("active", inspectOpen);
+    els.chipAnalytics.classList.toggle("active", false);
+  });
+  els.chipAnalytics.addEventListener("click", () => {
+    analyticsOpen = !analyticsOpen;
+    inspectOpen = false;
+    els.panelAnalytics.classList.toggle("open", analyticsOpen);
+    els.panelInspect.classList.toggle("open", false);
+    els.chipAnalytics.classList.toggle("active", analyticsOpen);
+    els.chipInspect.classList.toggle("active", false);
+  });
+
+  // Experiment chip
+  els.chipExperiment.addEventListener("click", async () => {
+    const names = getExperimentNames();
+    const name = prompt("Experiment:\n" + names.join("\n"));
+    if (!name) return;
+    try {
+      const result = runExperiment(name);
+      alert(`${result.name}\nTicks: ${result.ticks}\nPop: ${result.initialStats.population} → ${result.finalStats.population}\nBirths: ${result.finalStats.totalBirths} Deaths: ${result.finalStats.totalDeaths} Colonies: ${result.finalStats.colonyCount}`);
+    } catch (e) {
+      showError("Experiment error: " + (e && e.message ? e.message : String(e)));
+    }
+  });
+
+  // Save chip
+  els.chipSave.addEventListener("click", () => {
+    if (!sim) return;
+    const json = saveToJSON(sim);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `species-save-${CFG.seed}-t${sim.currentTick}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Load chip
+  els.chipLoad.addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const sim2 = loadFromJSON(ev.target.result);
+          sim = sim2;
+          selectedId = null;
+          clearOrganGroups();
+          CFG.seed = sim.simConfig.seed;
+          CFG.pop = sim.organisms.length;
+          els.seed.value = CFG.seed;
+          els.pop.value = CFG.pop;
+          els.world.value = `${sim.simConfig.width}x${sim.simConfig.height}`;
+          els.sysState.textContent = "RUNNING";
+          els.sysState.style.color = "#39ff14";
+          updateInspector(null);
+        } catch (err) {
+          showError("Load error: " + (err && err.message ? err.message : String(err)));
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  });
+
+  els.errorReset.addEventListener("click", () => {
+    els.error.classList.remove("show");
+    webglFailed = false;
+    running = true;
+    last = performance.now();
+    acc = 0;
+    frame = 0;
+    initThree();
+    if (!webglFailed) {
+      createSim();
+      bindUI();
+    }
   });
 }
 
@@ -528,8 +670,7 @@ function main() {
       }
       bindUI();
     } else {
-      // WebGL init failed: show error with retry button
-      showError("WebGL unavailable on this device. Try another browser.");
+      bindUI();
     }
   } catch (e) {
     showError("Init error: " + (e && e.message ? e.message : String(e)));
