@@ -500,7 +500,7 @@ function updateInspector() {
     ["Learning", t.evolvableLearningRate.toFixed(4)],
     ["Body plan", `${morpho.bodyPlan} · ${morpho.segmentCount} seg · ${morpho.limbPairs} limbs`],
     ["Colony", colony ? colony.id.toString() : "— (unicellular)"],
-    ["Parent", o.parentId ?? "—"],
+    ["Parent", org.parentId ?? "—"],
   ];
   let html = "";
   for (const [k, v] of rows) {
