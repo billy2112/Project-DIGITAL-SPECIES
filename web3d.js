@@ -174,9 +174,37 @@ function initThree() {
   bondLines.frustumCulled = false;
   scene.add(bondLines);
 
-  window.addEventListener("resize", onResize);
-  canvas.addEventListener("pointerdown", onPointerDown);
-  return true;
+window.addEventListener("resize", onResize);
+canvas.addEventListener("pointerdown", onPointerDown);
+canvas.addEventListener("touchstart", function (e) {
+  // Convert first touch to a pointerdown-like event
+  var t = e.touches[0];
+  var rect = canvas.getBoundingClientRect();
+  var mouse = new THREE.Vector2(
+    ((t.clientX - rect.left) / rect.width) * 2 - 1,
+    -((t.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  var raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  var hits = [];
+  organGroups.forEach(function (g) {
+    hits.push.apply(hits, raycaster.intersectObject(g.mesh, false));
+  });
+  hits.sort(function (a, b) { return a.distance - b.distance; });
+  selectedId = null;
+  if (hits.length) {
+    var pt = hits[0].point;
+    var best = null, bestD = 1e9;
+    for (var i = 0; i < sim.organisms.length; i++) {
+      var o = sim.organisms[i];
+      var d = Math.hypot(o.x - pt.x, o.y - pt.z);
+      if (d < bestD) { bestD = d; best = o; }
+    }
+    selectedId = best ? best.id : null;
+  }
+  updateInspector();
+}, { passive: false });
+return true;
 }
 
 function onResize() {
@@ -759,6 +787,8 @@ function main() {
     }
   }
   bindUI();
+
+  window.__dsReady = true;
 
   last = performance.now();
   requestAnimationFrame((t) => {

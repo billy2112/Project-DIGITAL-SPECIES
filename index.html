@@ -183,6 +183,29 @@
   <div style="font-size: 10px; color: #647084;">WebGL 3D &nbsp;|&nbsp; DNA genome &nbsp;|&nbsp; Hebbian NN &nbsp;|&nbsp; Colonies &nbsp;|&nbsp; Deterministic</div>
 </footer>
 
-<script type="module" src="./web3d.js"></script>
+  <!-- Fallback: if the ES module (Three.js from CDN) fails to load, show a clear error -->
+  <script>
+    window.__dsReady = false;
+    window.__dsError = null;
+    window.addEventListener('error', function (ev) {
+      window.__dsError = ev.message || 'Unknown script error';
+    });
+    setTimeout(function () {
+      if (!window.__dsReady) {
+        var el = document.getElementById('overlay-error');
+        if (el) {
+          el.style.display = 'flex';
+          var title = document.getElementById('error-title');
+          var msg = document.getElementById('error-msg');
+          if (title) title.textContent = '3D engine failed to load';
+          if (msg) msg.textContent = (window.__dsError || 'The Three.js renderer could not load (CDN blocked or offline).') + '<br><br>Try: refresh the page, use a different browser, or check your internet connection.';
+          var btn = document.getElementById('error-reset');
+          if (btn) btn.textContent = 'Reload page';
+          btn.onclick = function () { location.reload(); };
+        }
+      }
+    }, 6000);
+  </script>
+  <script type="module" src="./web3d.js"></script>
 </body>
 </html>
