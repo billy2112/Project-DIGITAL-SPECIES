@@ -59,6 +59,16 @@ const els = {
   errorReset: document.getElementById("error-reset"),
 };
 
+// Safe DOM text setter — never throws if element is missing
+function setText(el, text) {
+  if (el) el.textContent = text;
+}
+
+// Safe DOM innerHTML setter — never throws if element is missing
+function setHTML(el, html) {
+  if (el) el.innerHTML = html;
+}
+
 // ---- State ----
 let sim = null;
 let running = true;
@@ -458,34 +468,36 @@ function updateOrganisms() {
 function drawHud() {
   if (!sim) return;
   const st = sim.stats();
-  els.tick.textContent = st.tick.toLocaleString();
-  els.popStat.textContent = st.population.toLocaleString();
-  els.colonies.textContent = st.colonyCount.toLocaleString();
-  els.births.textContent = st.totalBirths.toLocaleString();
-  els.sexual.textContent = st.totalSexualBirths.toLocaleString();
-  els.buds.textContent = st.totalColonyBuds.toLocaleString();
-  els.deaths.textContent = st.totalDeaths.toLocaleString();
-  els.apoptosis.textContent = st.totalApoptosis.toLocaleString();
-  els.kills.textContent = st.totalKills.toLocaleString();
-  els.colonyDeaths.textContent = st.totalColonyDeaths.toLocaleString();
-  els.species.textContent = st.speciesCount.toLocaleString();
-  els.day.textContent = st.day.toLocaleString();
-  els.energy.textContent = st.avgEnergy.toFixed(1);
-  els.size.textContent = st.avgSize.toFixed(2);
-  els.strength.textContent = st.avgStrength.toFixed(2);
-  els.aggression.textContent = st.avgAggression.toFixed(2);
-  els.cooperation.textContent = st.avgCooperation.toFixed(2);
-  els.mutation.textContent = st.avgMutationRate.toFixed(4);
+  setText(els.tick, st.tick.toLocaleString());
+  setText(els.popStat, st.population.toLocaleString());
+  setText(els.colonies, st.colonyCount.toLocaleString());
+  setText(els.births, st.totalBirths.toLocaleString());
+  setText(els.sexual, st.totalSexualBirths.toLocaleString());
+  setText(els.buds, st.totalColonyBuds.toLocaleString());
+  setText(els.deaths, st.totalDeaths.toLocaleString());
+  setText(els.apoptosis, st.totalApoptosis.toLocaleString());
+  setText(els.kills, st.totalKills.toLocaleString());
+  setText(els.colonyDeaths, st.totalColonyDeaths.toLocaleString());
+  setText(els.species, st.speciesCount.toLocaleString());
+  setText(els.day, st.day.toLocaleString());
+  setText(els.energy, st.avgEnergy.toFixed(1));
+  setText(els.size, st.avgSize.toFixed(2));
+  setText(els.strength, st.avgStrength.toFixed(2));
+  setText(els.aggression, st.avgAggression.toFixed(2));
+  setText(els.cooperation, st.avgCooperation.toFixed(2));
+  setText(els.mutation, st.avgMutationRate.toFixed(4));
 
-  els.sysTick.textContent = st.tick.toLocaleString();
+  setText(els.sysTick, st.tick.toLocaleString());
 }
 
 function updateInspector() {
   if (!sim) return;
   const org = sim.organisms.find((o) => o.id === selectedId);
   if (!org) {
-    els.inspectContent.innerHTML =
-      '<div style="padding:14px 10px;color:#647084;font-size:11px;font-style:italic;">Tap an organism in the world to inspect its DNA, genes, and colony membership.</div>';
+    setHTML(
+      els.inspectContent,
+      '<div style="padding:14px 10px;color:#647084;font-size:11px;font-style:italic;">Tap an organism in the world to inspect its DNA, genes, and colony membership.</div>',
+    );
     return;
   }
   const t = org.genome.traits;
@@ -514,7 +526,7 @@ function updateInspector() {
   for (const [k, v] of rows) {
     html += `<div class="inspect-row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   }
-  els.inspectContent.innerHTML = html;
+  setHTML(els.inspectContent, html);
 }
 
 function drawInspector() {
