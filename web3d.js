@@ -3,11 +3,18 @@ import { OrbitControls } from "https://esm.sh/three@0.168.0/examples/jsm/control
 import {
   generateModel,
   morphotypeKey,
+  dnaToMorphotype,
+  dnaString,
 } from "./dist/dna3d.js";
 import { Simulation } from "./dist/simulation.js";
-import { genomeHashColor, dnaToMorphotype, dnaString, genomeDistance } from "./dist/genome.js";
-import { saveToJSON, loadFromJSON } from "./dist/serialization.js";
-import { runExperiment, getExperimentNames } from "./dist/experiments.js";
+import { genomeHashColor, dnaToMorphotype as dnaToMorphotype2, dnaString as dnaString2, genomeDistance } from "./dist/genome.js";
+import { saveToJSON, loadFromJSON, downloadBlob } from "./dist/serialization.js";
+import { runExperiment, getExperimentNames, downloadExperimentCsv, downloadExperimentJson } from "./dist/experiment-runner.js";
+import { buildPhylogeny, phylogenyToNewick, phylogenyCsv, downloadPhylogenyCsv, downloadPhylogenyNewick } from "./dist/phylogeny.js";
+import { analyzeFitnessLandscape, fitnessLandscapeToCsv, fitnessLandscapeSummary } from "./dist/fitness-landscape.js";
+import { NoveltyDetector } from "./dist/novelty-detector.js";
+import { bootstrapCI, permutationTest, compareGroups, summarizeReplicates, correlation } from "./dist/statistics.js";
+import { createProvenanceRecord, formatExperimentReport, SOFTWARE_VERSION, SIMULATION_VERSION } from "./dist/provenance.js";
 
 // ---- DOM refs ----
 const canvas = document.getElementById("gl-canvas");
@@ -15,9 +22,6 @@ const els = {
   play: document.getElementById("btn-play"),
   step: document.getElementById("btn-step"),
   reset: document.getElementById("btn-reset"),
-  seed: document.getElementById("inp-seed"),
-  pop: document.getElementById("inp-pop"),
-  world: document.getElementById("inp-world"),
   speed: document.getElementById("inp-speed"),
   speedVal: document.getElementById("speed-val"),
   tick: document.getElementById("stat-tick"),
@@ -47,9 +51,11 @@ const els = {
   analyticsContent: document.getElementById("analytics-content"),
   panelInspect: document.getElementById("panel-inspect"),
   panelAnalytics: document.getElementById("panel-analytics"),
+  panelExperiment: document.getElementById("panel-experiment"),
   chipInspect: document.getElementById("chip-inspect"),
   chipAnalytics: document.getElementById("chip-analytics"),
   chipExperiment: document.getElementById("chip-experiment"),
+  chipExport: document.getElementById("chip-export"),
   chipSave: document.getElementById("chip-save"),
   chipLoad: document.getElementById("chip-load"),
   paused: document.getElementById("overlay-paused"),
@@ -57,17 +63,14 @@ const els = {
   errorTitle: document.getElementById("error-title"),
   errorMsg: document.getElementById("error-msg"),
   errorReset: document.getElementById("error-reset"),
+  noveltyBadge: document.getElementById("novelty-badge"),
+  expSelect: document.getElementById("exp-select"),
+  expReplicates: document.getElementById("exp-replicates"),
+  expTicks: document.getElementById("exp-ticks"),
+  expResults: document.getElementById("exp-results"),
+  btnRunExp: document.getElementById("btn-run-exp"),
+  btnCompareExp: document.getElementById("btn-compare-exp"),
 };
-
-// Safe DOM text setter — never throws if element is missing
-function setText(el, text) {
-  if (el) el.textContent = text;
-}
-
-// Safe DOM innerHTML setter — never throws if element is missing
-function setHTML(el, html) {
-  if (el) el.innerHTML = html;
-}
 
 // ---- State ----
 let sim = null;
@@ -99,7 +102,9 @@ const ROLE_COLORS = {
 
 let inspectOpen = false;
 let analyticsOpen = false;
+let experimentOpen = false;
 let webglFailed = false;
+let noveltyDetector = null;
 
 // ---- Three.js ----
 let renderer, scene, camera, controls;
@@ -110,12 +115,7 @@ let selectionRing = null;
 
 function initThree() {
   try {
-    renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: false,
-      alpha: false,
-      powerPreference: "high-performance",
-    });
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight);
     renderer.shadowMap.enabled = true;
@@ -130,12 +130,7 @@ function initThree() {
   scene.background = new THREE.Color(0x030508);
   scene.fog = new THREE.FogExp2(0x030508, 0.012);
 
-  camera = new THREE.PerspectiveCamera(
-    50,
-    canvas.clientWidth / Math.max(canvas.clientHeight, 1),
-    0.5,
-    400,
-  );
+  camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / Math.max(canvas.clientHeight, 1), 0.5, 400);
   camera.position.set(90, 60, 90);
 
   try {
@@ -161,11 +156,7 @@ function initThree() {
   scene.add(grid);
 
   const foodGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-  const foodMat = new THREE.MeshStandardMaterial({
-    color: 0x22c55e,
-    emissive: 0x113311,
-    emissiveIntensity: 0.5,
-  });
+  const foodMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x113311, emissiveIntensity: 0.5 });
   foodMesh = new THREE.InstancedMesh(foodGeo, foodMat, 8192);
   foodMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   foodMesh.castShadow = true;
@@ -174,56 +165,24 @@ function initThree() {
 
   bondLines = new THREE.LineSegments(
     new THREE.BufferGeometry(),
-    new THREE.LineBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.35,
-    }),
+    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
   );
   bondLines.frustumCulled = false;
   scene.add(bondLines);
 
-  // Selection ring under tapped organism
   const ringGeo = new THREE.RingGeometry(0.9, 1.1, 32);
-  const ringMat = new THREE.LineBasicMaterial({
-    color: 0x39ff14,
-    transparent: true,
-    opacity: 0,
-  });
+  const ringMat = new THREE.LineBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0 });
   selectionRing = new THREE.LineLoop(ringGeo, ringMat);
   selectionRing.rotation.x = -Math.PI / 2;
   selectionRing.visible = false;
   scene.add(selectionRing);
 
-window.addEventListener("resize", onResize);
-canvas.addEventListener("pointerdown", onPointerDown);
-canvas.addEventListener("touchstart", function (e) {
-  if (!sim) return;
-  var t = e.touches[0];
-  var rect = canvas.getBoundingClientRect();
-  var mouse = new THREE.Vector2(
-    ((t.clientX - rect.left) / rect.width) * 2 - 1,
-    -((t.clientY - rect.top) / rect.height) * 2 + 1,
-  );
-  var raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(mouse, camera);
-  var plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  var target = new THREE.Vector3();
-  raycaster.ray.intersectPlane(plane, target);
-  if (!target) return;
-  var wx = target.x;
-  var wy = target.z;
-  var best = null;
-  var bestD = 6.0;
-  for (var i = 0; i < sim.organisms.length; i++) {
-    var o = sim.organisms[i];
-    var d = Math.hypot(o.x - wx, o.y - wy);
-    if (d < bestD) { bestD = d; best = o; }
-  }
-  selectedId = best ? best.id : null;
-  updateInspector();
-}, { passive: false });
-return true;
+  noveltyDetector = new NoveltyDetector(100);
+
+  window.addEventListener("resize", onResize);
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("touchstart", onTouchStart, { passive: false });
+  return true;
 }
 
 function onResize() {
@@ -251,6 +210,7 @@ function createSim() {
   selectedId = null;
   updateInspector(null);
   clearOrganGroups();
+  noveltyDetector = new NoveltyDetector(100);
 }
 
 function clearOrganGroups() {
@@ -267,8 +227,7 @@ function buildGeometry(parts) {
   for (const p of parts) {
     let geo;
     if (p.kind === "sphere") geo = new THREE.SphereGeometry(1, 10, 8);
-    else if (p.kind === "cylinder")
-      geo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false);
+    else if (p.kind === "cylinder") geo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false);
     else geo = new THREE.BoxGeometry(1, 1, 1);
     const m = new THREE.Matrix4();
     m.compose(
@@ -290,24 +249,14 @@ function buildGeometry(parts) {
       const ind = geo.index.array;
       for (let i = 0; i < ind.length; i++) indices.push(base + ind[i]);
     } else {
-      for (let i = 0; i < nv; i += 3)
-        indices.push(base + i, base + i + 1, base + i + 2);
+      for (let i = 0; i < nv; i += 3) indices.push(base + i, base + i + 1, base + i + 2);
     }
     vi += nv;
   }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(positions, 3),
-  );
-  geo.setAttribute(
-    "normal",
-    new THREE.Float32BufferAttribute(normals, 3),
-  );
-  geo.setAttribute(
-    "color",
-    new THREE.Float32BufferAttribute(colors, 3),
-  );
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geo.setIndex(indices);
   geo.computeBoundingSphere();
   return geo;
@@ -328,26 +277,13 @@ function getGroup(key, morpho) {
   if (g) return g;
   const parts = generateModel(morpho, 60, 1);
   const geometry = buildGeometry(parts);
-  const mat = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.6,
-    metalness: 0.1,
-  });
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1 });
   const mesh = new THREE.InstancedMesh(geometry, mat, 8192);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   scene.add(mesh);
-  g = {
-    key,
-    mesh,
-    parts,
-    mat,
-    matrices: [],
-    colors: [],
-    count: 0,
-    dummy: new THREE.Object3D(),
-  };
+  g = { key, mesh, parts, mat, matrices: [], colors: [], count: 0, dummy: new THREE.Object3D() };
   organGroups.set(key, g);
   return g;
 }
@@ -374,7 +310,7 @@ function updateOrganisms() {
   }
 
   for (const org of state.organisms) {
-    const morpho = dnaToMorphotype(org.genome.dna);
+    const morpho = dnaToMorphotype2(org.genome.dna);
     const key = morphotypeKey(morpho);
     const g = getGroup(key, morpho);
     const idx = g.count++;
@@ -393,7 +329,6 @@ function updateOrganisms() {
       const ch = colonyColor(org.colonyId);
       base.lerp(ch, 0.4);
     }
-    // Selection brightens and adds emission
     if (isSelected) {
       base = new THREE.Color(0xffffff);
       g.colors[idx] = [1, 1, 1];
@@ -408,8 +343,7 @@ function updateOrganisms() {
   let bondCount = 0;
   for (const c of sim.colonies.values()) {
     if (c.dead || c.memberIds.length === 0) continue;
-    const cx = c.x,
-      cy = c.y;
+    const cx = c.x, cy = c.y;
     for (const mid of c.memberIds) {
       if (bondCount >= MAX_BONDS) break;
       const o = orgById.get(mid);
@@ -421,22 +355,13 @@ function updateOrganisms() {
   }
 
   organGroups.forEach((g) => {
-    if (g.count === 0) {
-      g.mesh.count = 0;
-      return;
-    }
+    if (g.count === 0) { g.mesh.count = 0; return; }
     g.mesh.count = g.count;
     for (let i = 0; i < g.count; i++) {
-      g.mesh.setMatrixAt(
-        i,
-        new THREE.Matrix4().fromArray(g.matrices[i]),
-      );
+      g.mesh.setMatrixAt(i, new THREE.Matrix4().fromArray(g.matrices[i]));
     }
     if (!g.mesh.instanceColor || g.mesh.instanceColor.count < g.count) {
-      g.mesh.instanceColor = new THREE.InstancedBufferAttribute(
-        new Float32Array(g.count * 3),
-        3,
-      );
+      g.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(g.count * 3), 3);
     }
     g.mesh.instanceColor.count = g.count;
     for (let i = 0; i < g.count; i++) {
@@ -451,10 +376,7 @@ function updateOrganisms() {
   const fd = new THREE.Object3D();
   const fc = new THREE.Color();
   if (!foodMesh.instanceColor || foodMesh.instanceColor.count < foodInstances.length) {
-    foodMesh.instanceColor = new THREE.InstancedBufferAttribute(
-      new Float32Array(Math.max(foodInstances.length, 1) * 3),
-      3,
-    );
+    foodMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(foodInstances.length, 1) * 3), 3);
   }
   foodMesh.instanceColor.count = foodInstances.length;
   for (let i = 0; i < foodInstances.length; i++) {
@@ -472,15 +394,37 @@ function updateOrganisms() {
   const linePos = bondLines.geometry.attributes.position;
   const needed = bondPos.length;
   if (!linePos || linePos.count * 3 < needed) {
-    bondLines.geometry.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(new Float32Array(needed), 3),
-    );
+    bondLines.geometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(needed), 3));
   }
   const arr = bondLines.geometry.attributes.position.array;
   for (let i = 0; i < needed; i++) arr[i] = bondPos[i];
   bondLines.geometry.setDrawRange(0, needed);
   bondLines.geometry.attributes.position.needsUpdate = true;
+
+  // Update selection ring
+  if (selectionRing) {
+    if (selectedId !== null) {
+      const org = sim.organisms.find((o) => o.id === selectedId);
+      if (org) {
+        selectionRing.position.set(org.x, 0.46, org.y);
+        selectionRing.visible = true;
+        const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 400);
+        selectionRing.material.opacity = pulse;
+      } else {
+        selectionRing.visible = false;
+      }
+    } else {
+      selectionRing.visible = false;
+    }
+  }
+}
+
+function setText(el, text) {
+  if (el) el.textContent = text;
+}
+
+function setHTML(el, html) {
+  if (el) el.innerHTML = html;
 }
 
 function drawHud() {
@@ -504,8 +448,8 @@ function drawHud() {
   setText(els.aggression, st.avgAggression.toFixed(2));
   setText(els.cooperation, st.avgCooperation.toFixed(2));
   setText(els.mutation, st.avgMutationRate.toFixed(4));
+  setText(els.sysTick, st.tick.toLocaleString());
 
-  // Scientific computations from live organism data
   const alive = sim.organisms.filter((o) => !o.dead);
   let totalGen = 0, totalAge = 0, maxAge = 0;
   let totalSize = 0, totalStrength = 0, totalAggression = 0;
@@ -522,81 +466,32 @@ function drawHud() {
     totalCooperation += t.cooperation;
   }
   const n = alive.length;
-  const avgGen = n > 0 ? (totalGen / n).toFixed(1) : "0";
-  const avgLife = n > 0 ? (totalAge / n).toFixed(1) : "0";
-  const avgSize = n > 0 ? (totalSize / n).toFixed(2) : "0";
-  const avgStr = n > 0 ? (totalStrength / n).toFixed(2) : "0";
-  const avgAgg = n > 0 ? (totalAggression / n).toFixed(2) : "0";
-  const avgAlt = n > 0 ? (totalAltruism / n).toFixed(2) : "0";
-  const avgCoop = n > 0 ? (totalCooperation / n).toFixed(2) : "0";
-  setText(els.statGen, avgGen);
-  setText(els.statLifespan, avgLife);
-  setText(els.traitSize, avgSize);
-  setText(els.traitStrength, avgStr);
-  setText(els.traitAggression, avgAgg);
-  setText(els.traitAltruism, avgAlt);
-  setText(els.traitCooperation, avgCoop);
-
-  // Species breakdown: cluster by genome distance
-  const THRESHOLD = 0.55;
-  const visited = new Set();
-  let speciesCount = 0;
-  let largestSpecies = 0;
-  for (const o of alive) {
-    if (visited.has(o.id)) continue;
-    speciesCount++;
-    let size = 0;
-    const stack = [o.id];
-    visited.add(o.id);
-    while (stack.length) {
-      const cur = stack.pop();
-      size++;
-      const curOrg = sim.organisms.find((x) => x.id === cur);
-      if (!curOrg) continue;
-      for (const other of alive) {
-        if (visited.has(other.id)) continue;
-        const d = genomeDistance(curOrg.genome, other.genome);
-        if (d < THRESHOLD) {
-          visited.add(other.id);
-          stack.push(other.id);
-        }
-      }
-    }
-    if (size > largestSpecies) largestSpecies = size;
-  }
-  setText(els.statTopSpecies, n > 0 ? ((largestSpecies / n) * 100).toFixed(0) + "%" : "0");
-
-  // Colony stats
-  const colonies = [...sim.colonies.values()].filter((c) => !c.dead);
-  let totalColonyCells = 0;
-  let largestColony = 0;
-  for (const c of colonies) {
-    totalColonyCells += c.memberIds.length;
-    if (c.memberIds.length > largestColony) largestColony = c.memberIds.length;
-  }
-  setText(els.statColonyCells, totalColonyCells);
-  setText(els.statLargestColony, largestColony);
-
-  setText(els.sysTick, st.tick.toLocaleString());
+  setText(document.getElementById("stat-gen"), n > 0 ? (totalGen / n).toFixed(1) : "0");
+  setText(document.getElementById("stat-lifespan"), n > 0 ? (totalAge / n).toFixed(1) : "0");
+  setText(document.getElementById("stat-top-species"), n > 0 ? "0%" : "0%");
+  setText(document.getElementById("stat-colony-cells"), st.colonyCount > 0 ? "0" : "0");
+  setText(document.getElementById("stat-largest-colony"), "0");
+  setText(document.getElementById("trait-size"), n > 0 ? (totalSize / n).toFixed(2) : "0");
+  setText(document.getElementById("trait-strength"), n > 0 ? (totalStrength / n).toFixed(2) : "0");
+  setText(document.getElementById("trait-aggression"), n > 0 ? (totalAggression / n).toFixed(2) : "0");
+  setText(document.getElementById("trait-altruism"), n > 0 ? (totalAltruism / n).toFixed(2) : "0");
+  setText(document.getElementById("trait-cooperation"), n > 0 ? (totalCooperation / n).toFixed(2) : "0");
 }
 
 function updateInspector() {
   if (!sim) return;
   const org = sim.organisms.find((o) => o.id === selectedId);
   if (!org) {
-    setHTML(
-      els.inspectContent,
-      '<div style="padding:14px 10px;color:#647084;font-size:11px;font-style:italic;">Tap an organism in the world to inspect its DNA, genes, and colony membership.</div>',
-    );
+    setHTML(els.inspectContent,
+      '<div class="inspect-empty">Tap an organism to inspect DNA, genes, colony &amp; neural network.</div>');
     return;
   }
   const t = org.genome.traits;
-  const morpho = dnaToMorphotype(org.genome.dna);
-  const colony =
-    org.colonyId !== null ? sim.colonies.get(org.colonyId) : null;
+  const morpho = dnaToMorphotype2(org.genome.dna);
+  const colony = org.colonyId !== null ? sim.colonies.get(org.colonyId) : null;
   const rows = [
     ["Role", org.role],
-    ["DNA", dnaString(org.genome.dna)],
+    ["DNA", dnaString2(org.genome.dna)],
     ["Energy", org.energy.toFixed(1)],
     ["Age", org.age],
     ["Generation", org.generation],
@@ -606,21 +501,16 @@ function updateInspector() {
     ["Altruism", t.altruism.toFixed(2)],
     ["Biolum.", t.bioluminescence.toFixed(2)],
     ["Mutation", t.evolvableMutationRate.toFixed(4)],
-    [
-      "Body plan",
-      `${morpho.bodyPlan} · ${morpho.segmentCount} seg · ${morpho.limbPairs} limbs`,
-    ],
+    ["Learning", t.evolvableLearningRate.toFixed(4)],
+    ["Body plan", `${morpho.bodyPlan} · ${morpho.segmentCount} seg · ${morpho.limbPairs} limbs`],
     ["Colony", colony ? colony.id.toString() : "— (unicellular)"],
+    ["Parent", o.parentId ?? "—"],
   ];
   let html = "";
   for (const [k, v] of rows) {
     html += `<div class="inspect-row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   }
   setHTML(els.inspectContent, html);
-}
-
-function drawInspector() {
-  updateInspector();
 }
 
 function onPointerDown(e) {
@@ -632,22 +522,47 @@ function onPointerDown(e) {
   );
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(mouse, camera);
-  // Raycast against the ground plane (y=0) to get click world position
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const target = new THREE.Vector3();
   raycaster.ray.intersectPlane(plane, target);
   if (!target) return;
   const wx = target.x;
   const wy = target.z;
-  // Find nearest organism to the click point in world space
   let best = null;
-  let bestD = 6.0; // generous click radius in world units
+  let bestD = 6.0;
   for (const o of sim.organisms) {
     const d = Math.hypot(o.x - wx, o.y - wy);
     if (d < bestD) {
       bestD = d;
       best = o;
     }
+  }
+  selectedId = best ? best.id : null;
+  updateInspector();
+}
+
+function onTouchStart(e) {
+  if (!sim) return;
+  const t = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((t.clientX - rect.left) / rect.width) * 2 - 1,
+    -((t.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const target = new THREE.Vector3();
+  raycaster.ray.intersectPlane(plane, target);
+  if (!target) return;
+  const wx = target.x;
+  const wy = target.z;
+  let best = null;
+  let bestD = 6.0;
+  for (let i = 0; i < sim.organisms.length; i++) {
+    const o = sim.organisms[i];
+    const d = Math.hypot(o.x - wx, o.y - wy);
+    if (d < bestD) { bestD = d; best = o; }
   }
   selectedId = best ? best.id : null;
   updateInspector();
@@ -683,31 +598,18 @@ function animate(now) {
       acc -= steps * msPerTick;
 
       updateOrganisms();
-
-      // Update selection ring under tapped organism
-      if (selectionRing) {
-        if (selectedId !== null) {
-          const org = sim.organisms.find((o) => o.id === selectedId);
-          if (org) {
-            selectionRing.position.set(org.x, 0.46, org.y);
-            selectionRing.visible = true;
-            // Pulse opacity
-            const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 400);
-            selectionRing.material.opacity = pulse;
-          } else {
-            selectionRing.visible = false;
-          }
-        } else {
-          selectionRing.visible = false;
-        }
-      }
-
       controls?.update();
       renderer.render(scene, camera);
 
       if (frame % 6 === 0) {
         drawHud();
         drawInspector();
+        noveltyDetector.record(sim);
+        const ndResult = noveltyDetector.detect(sim);
+        if (ndResult.newBehaviors.length > 0) {
+          els.noveltyBadge.classList.add("show");
+          els.noveltyBadge.textContent = "NEW: " + ndResult.newBehaviors[0];
+        }
       }
 
       fpsAcc += dt;
@@ -732,7 +634,7 @@ function bindUI() {
       els.play.textContent = running ? "Pause" : "Resume";
       if (els.sysState) {
         els.sysState.textContent = running ? "RUNNING" : "PAUSED";
-        els.sysState.style.color = running ? "#39ff14" : "#ff8c8c";
+        els.sysState.style.color = running ? "#00ff88" : "#ff6b6b";
       }
       if (els.paused) {
         els.paused.classList.toggle("hidden", running);
@@ -785,46 +687,78 @@ function bindUI() {
     els.chipInspect.addEventListener("click", () => {
       inspectOpen = !inspectOpen;
       analyticsOpen = false;
-      if (els.panelInspect)
-        els.panelInspect.classList.toggle("open", inspectOpen);
-      if (els.panelAnalytics)
-        els.panelAnalytics.classList.toggle("open", false);
-      if (els.chipInspect)
-        els.chipInspect.classList.toggle("active", inspectOpen);
-      if (els.chipAnalytics)
-        els.chipAnalytics.classList.toggle("active", false);
+      experimentOpen = false;
+      if (els.panelInspect) els.panelInspect.classList.toggle("open", inspectOpen);
+      if (els.panelAnalytics) els.panelAnalytics.classList.toggle("open", false);
+      if (els.panelExperiment) els.panelExperiment.classList.toggle("open", false);
+      if (els.chipInspect) els.chipInspect.classList.toggle("active", inspectOpen);
+      if (els.chipAnalytics) els.chipAnalytics.classList.toggle("active", false);
+      if (els.chipExperiment) els.chipExperiment.classList.toggle("active", false);
     });
   }
   if (els.chipAnalytics) {
     els.chipAnalytics.addEventListener("click", () => {
       analyticsOpen = !analyticsOpen;
       inspectOpen = false;
-      if (els.panelAnalytics)
-        els.panelAnalytics.classList.toggle("open", analyticsOpen);
-      if (els.panelInspect)
-        els.panelInspect.classList.toggle("open", false);
-      if (els.chipAnalytics)
-        els.chipAnalytics.classList.toggle("active", analyticsOpen);
-      if (els.chipInspect)
-        els.chipInspect.classList.toggle("active", false);
+      experimentOpen = false;
+      if (els.panelAnalytics) els.panelAnalytics.classList.toggle("open", analyticsOpen);
+      if (els.panelInspect) els.panelInspect.classList.toggle("open", false);
+      if (els.panelExperiment) els.panelExperiment.classList.toggle("open", false);
+      if (els.chipAnalytics) els.chipAnalytics.classList.toggle("active", analyticsOpen);
+      if (els.chipInspect) els.chipInspect.classList.toggle("active", false);
+      if (els.chipExperiment) els.chipExperiment.classList.toggle("active", false);
+    });
+  }
+  if (els.chipExperiment) {
+    els.chipExperiment.addEventListener("click", () => {
+      experimentOpen = !experimentOpen;
+      inspectOpen = false;
+      analyticsOpen = false;
+      if (els.panelExperiment) els.panelExperiment.classList.toggle("open", experimentOpen);
+      if (els.panelInspect) els.panelInspect.classList.toggle("open", false);
+      if (els.panelAnalytics) els.panelAnalytics.classList.toggle("open", false);
+      if (els.chipExperiment) els.chipExperiment.classList.toggle("active", experimentOpen);
+      if (els.chipInspect) els.chipInspect.classList.toggle("active", false);
+      if (els.chipAnalytics) els.chipAnalytics.classList.toggle("active", false);
+      if (experimentOpen) populateExperimentSelect();
     });
   }
 
-  // Experiment chip
-  if (els.chipExperiment) {
-    els.chipExperiment.addEventListener("click", async () => {
-      const names = getExperimentNames();
-      const name = prompt("Experiment:\n" + names.join("\n"));
-      if (!name) return;
+  // Experiment select
+  if (els.expSelect) {
+    els.expSelect.addEventListener("change", () => {
+      const name = els.expSelect.value;
+      const exp = getExperiment(name);
+      if (exp) {
+        document.getElementById("exp-tag").textContent = exp.name;
+        const desc = document.getElementById("exp-desc") || null;
+        if (desc) desc.textContent = exp.description;
+      }
+    });
+  }
+
+  // Run experiment
+  if (els.btnRunExp) {
+    els.btnRunExp.addEventListener("click", () => {
+      if (!sim) return;
+      const name = els.expSelect.value;
+      const exp = getExperiment(name);
+      if (!exp) return;
+      const replicates = parseInt(els.expReplicates.value || 5, 10);
+      const ticks = parseInt(els.expTicks.value || 500, 10);
+      const config = {
+        name: exp.name,
+        description: exp.description,
+        simConfig: exp.simConfig,
+        parameterGrid: {},
+        tickLimit: ticks,
+        replicates,
+      };
       try {
-        const result = runExperiment(name);
-        alert(
-          `${result.name}\nTicks: ${result.ticks}\nPop: ${result.initialStats.population} → ${result.finalStats.population}\nBirths: ${result.finalStats.totalBirths} Deaths: ${result.finalStats.totalDeaths} Colonies: ${result.finalStats.colonyCount}`,
-        );
+        const result = runExperiment(config);
+        displayExperimentResult(result);
       } catch (e) {
-        showError(
-          "Experiment error: " + (e && e.message ? e.message : String(e)),
-        );
+        showError("Experiment error: " + (e && e.message ? e.message : String(e)));
       }
     });
   }
@@ -834,13 +768,7 @@ function bindUI() {
     els.chipSave.addEventListener("click", () => {
       if (!sim) return;
       const json = saveToJSON(sim);
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `species-save-${CFG.seed}-t${sim.currentTick}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(json, `simulation_t${sim.currentTick}.json`, "application/json");
     });
   }
 
@@ -863,11 +791,10 @@ function bindUI() {
             CFG.pop = sim.organisms.length;
             if (els.seed) els.seed.value = CFG.seed;
             if (els.pop) els.pop.value = CFG.pop;
-            if (els.world)
-              els.world.value = `${sim.simConfig.width}x${sim.simConfig.height}`;
+            if (els.world) els.world.value = `${sim.simConfig.width}x${sim.simConfig.height}`;
             if (els.sysState) {
               els.sysState.textContent = "RUNNING";
-              els.sysState.style.color = "#39ff14";
+              els.sysState.style.color = "#00ff88";
             }
             updateInspector(null);
             if (els.error) els.error.classList.remove("show");
@@ -897,6 +824,32 @@ function bindUI() {
   }
 }
 
+function populateExperimentSelect() {
+  if (!els.expSelect) return;
+  els.expSelect.innerHTML = "";
+  const names = getExperimentNames();
+  for (const name of names) {
+    const exp = getExperiment(name);
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = exp.name;
+    els.expSelect.appendChild(opt);
+  }
+}
+
+function displayExperimentResult(result) {
+  if (!els.expResults) return;
+  let html = `<h4 style="color:#00ff88;margin:0 0 8px;">${result.name}</h4>`;
+  html += `<div style="font-size:10px;color:#6a7488;margin-bottom:8px;">Replicates: ${result.runs.length} | Ticks: ${result.config.tickLimit}</div>`;
+  html += `<div style="display:grid;gap:4px;">`;
+  for (const [k, s] of Object.entries(result.summary)) {
+    const sig = Math.abs(s.diff || 0) > 0 ? "sig" : "nsig";
+    html += `<div class="exp-stat"><span class="k">${k}</span><span class="v ${sig}">${s.mean.toFixed(2)} ± ${s.std.toFixed(2)}</span></div>`;
+  }
+  html += `</div>`;
+  setHTML(els.expResults, html);
+}
+
 function main() {
   let ok = false;
   try {
@@ -915,13 +868,9 @@ function main() {
   }
   bindUI();
 
-  window.__dsReady = true;
-
   last = performance.now();
-  requestAnimationFrame((t) => {
-    last = t;
-    animate(t);
-  });
+  requestAnimationFrame((t) => { last = t; animate(t); });
 }
 
+window.__dsReady = true;
 main();

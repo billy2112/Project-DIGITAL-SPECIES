@@ -3,106 +3,132 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Project DIGITAL SPECIES — Artificial Life Observatory</title>
+<title>Project DIGITAL SPECIES — Scientific Life Observatory</title>
 <style>
-  /* === Reset & base === */
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
-    background: #06080c; color: #cfd8e0; font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace; }
+    background: #05070a; color: #cfd8e0; font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace; }
   #gl-canvas { display: block; width: 100vw; height: 100vh; background: #030508; touch-action: none; }
 
-  /* === Layout shells === */
   .shell { position: absolute; pointer-events: none; top: 0; left: 0; width: 100%; height: 100%; }
   .shell > * { pointer-events: auto; }
 
-  /* === Top bar === */
   header { position: absolute; top: 0; left: 0; right: 0; height: 44px;
     border-bottom: 1px solid #1c2430; display: flex; align-items: center; justify-content: space-between;
-    padding: 0 16px; z-index: 50; background: rgba(6, 8, 12, 0.8); }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.12em; font-size: 13px; color: #39ff14; }
-  .brand .dot { width: 7px; height: 7px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 8px #39ff14;
+    padding: 0 16px; z-index: 60; background: rgba(6, 8, 12, 0.85); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: 0.12em; font-size: 13px; color: #00ff88; }
+  .brand .dot { width: 7px; height: 7px; background: #00ff88; border-radius: 50%; box-shadow: 0 0 10px #00ff88;
     animation: pulse 2.5s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 6px #39ff14; } 50% { opacity: 0.55; box-shadow: 0 0 14px #39ff14; } }
-  .sysbar { display: flex; gap: 18px; font-size: 11px; }
-  .sys .k { color: #647084; text-transform: uppercase; letter-spacing: 0.08em; font-size: 9px; }
-  .sys .v { color: #cfd8e0; font-variant-numeric: tabular-nums; }
+  @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 6px #00ff88; } 50% { opacity: 0.55; box-shadow: 0 0 16px #00ff88; } }
+  .sysbar { display: flex; gap: 16px; font-size: 10.5px; }
+  .sys .k { color: #6a7488; text-transform: uppercase; letter-spacing: 0.08em; font-size: 9px; }
+  .sys .v { color: #e8edf0; font-variant-numeric: tabular-nums; }
 
-  /* === Panels === */
-  .panel { position: absolute; border: 1px solid #1c2430; background: rgba(6, 8, 12, 0.85);
-    color: #cfd8e0; font-size: 12px; }
-  .panel h3 { margin: 0 0 10px; padding: 8px 12px; border-bottom: 1px solid #1c2430;
-    font-size: 11px; color: #8fa0b8; text-transform: uppercase; letter-spacing: 0.1em; display: flex; justify-content: space-between; align-items: center; }
+  .panel { position: absolute; border: 1px solid #1c2430; background: rgba(6, 8, 12, 0.9);
+    color: #cfd8e0; font-size: 11px; }
+  .panel h3 { margin: 0 0 8px; padding: 7px 12px; border-bottom: 1px solid #1c2430;
+    font-size: 10.5px; color: #8fa0b8; text-transform: uppercase; letter-spacing: 0.1em; display: flex; justify-content: space-between; align-items: center; }
 
-  /* Left inspector */
-  #panel-inspect { top: 48px; left: 16px; width: 300px; bottom: 96px; overflow-y: auto; z-index: 50;
-    transform: translateX(-110%); transition: transform 0.22s ease; }
+  #panel-inspect { top: 48px; left: 16px; width: 320px; bottom: 100px; overflow-y: auto; z-index: 60;
+    transform: translateX(-115%); transition: transform 0.25s ease; }
   #panel-inspect.open { transform: translateX(0); }
   .inspect-row { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid #121822;
-    padding: 6px 10px; font-size: 11.5px; }
-  .inspect-row .k { color: #647084; }
-  .inspect-row .v { color: #cfd8e0; font-variant-numeric: tabular-nums; text-align: right; word-break: break-all; }
-  .inspect-empty { padding: 14px 10px; color: #647084; font-size: 11px; font-style: italic; }
-  .inspect-tag { font-size: 9px; padding: 2px 8px; border: 1px solid #2a3442; border-radius: 3px; color: #39ff14; }
+    padding: 6px 10px; font-size: 11px; }
+  .inspect-row .k { color: #6a7488; }
+  .inspect-row .v { color: #e8edf0; font-variant-numeric: tabular-nums; text-align: right; word-break: break-all; }
+  .inspect-row .v.highlight { color: #00ff88; font-weight: 700; }
+  .inspect-empty { padding: 14px 10px; color: #6a7488; font-size: 11px; font-style: italic; text-align: center; }
+  .inspect-tag { font-size: 9px; padding: 2px 8px; border: 1px solid #2a3442; border-radius: 3px; color: #00ff88; }
 
-  /* Right analytics */
-  #panel-analytics { top: 48px; right: 16px; width: 300px; bottom: 96px; overflow-y: auto; z-index: 50;
-    transform: translateX(110%); transition: transform 0.22s ease; }
+  #panel-analytics { top: 48px; right: 16px; width: 340px; bottom: 100px; overflow-y: auto; z-index: 60;
+    transform: translateX(115%); transition: transform 0.25s ease; }
   #panel-analytics.open { transform: translateX(0); }
   .stat-row { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid #121822;
-    padding: 7px 10px; font-size: 11.5px; }
-  .stat-row .k { color: #647084; }
-  .stat-row .v { color: #cfd8e0; font-variant-numeric: tabular-nums; text-align: right; }
+    padding: 6px 10px; font-size: 11px; }
+  .stat-row .k { color: #6a7488; }
+  .stat-row .v { color: #e8edf0; font-variant-numeric: tabular-nums; text-align: right; }
+  .stat-row .v.sci { color: #7dd3fc; }
 
-  /* Bottom transport bar */
-  footer { position: absolute; bottom: 0; left: 0; right: 0; height: 88px;
+  #panel-experiment { top: 48px; right: 370px; width: 340px; bottom: 100px; overflow-y: auto; z-index: 60;
+    transform: translateX(115%); transition: transform 0.25s ease; }
+  #panel-experiment.open { transform: translateX(0); }
+
+  .btn-group { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid #1c2430; }
+  .exp-btn { flex: 1; padding: 7px 10px; border: 1px solid #2a3442; background: #0c121c;
+    color: #cfd8e0; font-size: 11px; font-weight: 700; cursor: pointer; border-radius: 3px; }
+  .exp-btn:active { background: #161e2c; }
+  .exp-btn.primary { background: #00ff88; border-color: #00ff88; color: #000; }
+  .exp-btn.primary:active { background: #5cffb3; }
+
+  .exp-config { padding: 10px; display: grid; gap: 8px; }
+  .exp-field { display: flex; flex-direction: column; gap: 3px; }
+  .exp-field label { font-size: 9.5px; color: #6a7488; text-transform: uppercase; letter-spacing: 0.05em; }
+  .exp-field input, .exp-field select { width: 100%; padding: 5px 8px; border-radius: 3px; border: 1px solid #2a3442;
+    background: rgba(0,0,0,0.3); color: #e8edf0; font-size: 11px; font-family: inherit; }
+  .exp-field input:focus { border-color: #00ff88; outline: none; }
+
+  .exp-results { padding: 10px; border-top: 1px solid #1c2430; display: grid; gap: 6px; }
+  .exp-stat { display: flex; justify-content: space-between; padding: 5px 8px; border-bottom: 1px solid #121822;
+    font-size: 10.5px; }
+  .exp-stat .k { color: #6a7488; }
+  .exp-stat .v { color: #e8edf0; font-variant-numeric: tabular-nums; text-align: right; }
+  .exp-stat .v.sig { color: #00ff88; font-weight: 700; }
+  .exp-stat .v.nsig { color: #ff6b6b; }
+
+  footer { position: absolute; bottom: 0; left: 0; right: 0; height: 100px;
     border-top: 1px solid #1c2430; display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px; z-index: 50; background: rgba(6, 8, 12, 0.85); }
-  .transport { display: flex; align-items: center; gap: 14px; }
+    padding: 10px 16px; z-index: 60; background: rgba(6, 8, 12, 0.9); }
+  .transport { display: flex; align-items: center; gap: 10px; }
   button { padding: 8px 14px; border-radius: 3px; border: 1px solid #2a3442; background: #0c121c;
     color: #cfd8e0; font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 0.05em; }
   button:active { background: #161e2c; }
-  button.primary { background: #39ff14; border-color: #39ff14; color: #000; }
-  button.primary:active { background: #5cff4d; }
-  button.secondary { background: #0c121c; }
+  button.primary { background: #00ff88; border-color: #00ff88; color: #000; }
+  button.primary:active { background: #5cffb3; }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
-  .speed-wrap { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8fa0b8; }
-  input[type=range] { accent-color: #39ff14; width: 110px; height: 4px; background: none; }
+  .speed-wrap { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #6a7488; }
+  input[type=range] { accent-color: #00ff88; width: 120px; height: 4px; background: none; }
 
-  /* === Overlays === */
-  #overlay-paused { position: absolute; inset: 0; background: rgba(6, 8, 12, 0.75);
-    display: none; align-items: center; justify-content: center; z-index: 60; flex-direction: column; gap: 12px; }
+  .chips { position: absolute; top: 56px; left: 16px; right: 16px; display: flex; gap: 8px;
+    flex-wrap: wrap; z-index: 60; pointer-events: auto; }
+  .chip { padding: 6px 12px; border: 1px solid #2a3442; background: #0c121c; color: #cfd8e0;
+    font-size: 11px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
+  .chip:active { background: #161e2c; }
+  .chip.active { border-color: #00ff88; color: #00ff88; }
+
+  #overlay-paused { position: absolute; inset: 0; background: rgba(6, 8, 12, 0.8);
+    display: none; align-items: center; justify-content: center; z-index: 70; flex-direction: column; gap: 14px; }
   #overlay-paused.show { display: flex; }
   #overlay-paused .big { font-size: 34px; font-weight: 800; color: #fff; letter-spacing: 0.12em; }
   #overlay-paused .sub { font-size: 13px; color: #8fa0b4; }
 
   #overlay-error { position: absolute; inset: 0; background: #0a0d15;
-    display: none; align-items: center; justify-content: center; z-index: 70;
+    display: none; align-items: center; justify-content: center; z-index: 80;
     flex-direction: column; gap: 12px; padding: 24px; text-align: center; }
   #overlay-error.show { display: flex; }
   #overlay-error .big { color: #ff4d4d; font-weight: 800; font-size: 16px; }
-  #overlay-error .sub { color: #8fa0b4; font-size: 12px; max-width: 320px; line-height: 1.5; }
-  #overlay-error button { margin-top: 14px; background: #39ff14; border-color: #39ff14; color: #000; }
+  #overlay-error .sub { color: #8fa0b4; font-size: 12px; max-width: 340px; line-height: 1.5; }
+  #overlay-error button { margin-top: 14px; background: #00ff88; border-color: #00ff88; color: #000; }
 
-  /* Control chip bar (experiment / save / load) */
-  .chips { position: absolute; top: 104px; left: 16px; right: 16px; display: flex; gap: 8px;
-    flex-wrap: wrap; z-index: 50; pointer-events: auto; }
-  .chip { padding: 6px 12px; border: 1px solid #2a3442; background: #0c121c; color: #cfd8e0;
-    font-size: 11px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
-  .chip:active { background: #161e2c; }
-  .chip.active { border-color: #39ff14; color: #39ff14; }
+  .novelty-badge { position: absolute; top: 104px; right: 16px; background: #ff6b6b;
+    color: #000; padding: 4px 10px; border-radius: 3px; font-size: 10px; font-weight: 700;
+    z-index: 60; animation: blink 1.5s infinite; display: none; }
+  .novelty-badge.show { display: block; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
 
-  /* === Responsive === */
   @media (max-width: 900px) {
-    #panel-inspect, #panel-analytics { position: fixed; bottom: 88px; left: 0; right: 0; top: auto; width: auto; height: 150px;
-      border: none; border-top: 1px solid #1c2430; border-radius: 6px 6px 0 0; transform: translateY(110%); }
-    #panel-inspect.open, #panel-analytics.open { transform: translateY(0); }
-    #panel-inspect { left: 16px; right: 16px; }
-    #panel-analytics { left: 16px; right: 16px; }
+    #panel-inspect, #panel-analytics, #panel-experiment {
+      position: fixed; bottom: 100px; left: 0; right: 0; top: auto; width: auto; height: 160px;
+      border: none; border-top: 1px solid #1c2430; border-radius: 6px 6px 0 0; transform: translateY(115%);
+    }
+    #panel-inspect.open, #panel-analytics.open, #panel-experiment.open { transform: translateY(0); }
+    #panel-inspect { left: 16px; right: 16px; width: auto; }
+    #panel-analytics { left: 16px; right: 16px; width: auto; }
+    #panel-experiment { left: 16px; right: 16px; width: auto; }
     .chips { top: 10px; left: 10px; right: 10px; justify-content: center; }
-    footer { height: 104px; flex-direction: column; gap: 10px; padding: 10px 12px; }
-    .transport { gap: 10px; }
-    .speed-wrap { font-size: 10px; }
+    footer { height: 115px; flex-direction: column; gap: 10px; padding: 10px 12px; }
+    .transport { gap: 8px; }
     button { min-width: 70px; padding: 7px 10px; font-size: 11px; }
+    .speed-wrap { font-size: 10px; }
   }
 </style>
 </head>
@@ -114,16 +140,19 @@
     <div class="brand"><div class="dot"></div>Project DIGITAL SPECIES</div>
     <div class="sysbar">
       <div class="sys"><div class="k">Mode</div><div class="v" id="sys-mode">3D</div></div>
-      <div class="sys"><div class="k">State</div><div class="v" id="sys-state" style="color:#39ff14">RUNNING</div></div>
+      <div class="sys"><div class="k">State</div><div class="v" id="sys-state" style="color:#00ff88">RUNNING</div></div>
       <div class="sys"><div class="k">FPS</div><div class="v" id="sys-fps">0</div></div>
       <div class="sys"><div class="k">Tick</div><div class="v" id="sys-tick">0</div></div>
     </div>
   </header>
 
+  <div class="novelty-badge" id="novelty-badge">NEW BEHAVIOR DETECTED</div>
+
   <div class="chips">
-    <button class="chip" id="chip-inspect">Inspector</button>
+    <button class="chip active" id="chip-inspect">Inspector</button>
     <button class="chip" id="chip-analytics">Analytics</button>
-    <button class="chip" id="chip-experiment">Experiment</button>
+    <button class="chip" id="chip-experiment">Experiments</button>
+    <button class="chip" id="chip-export">Export</button>
     <button class="chip" id="chip-save">Save</button>
     <button class="chip" id="chip-load">Load</button>
   </div>
@@ -131,12 +160,12 @@
   <div id="panel-inspect" class="panel">
     <h3><span>Organism</span><span id="inspect-tag" class="inspect-tag">—</span></h3>
     <div id="inspect-content">
-      <div class="inspect-empty">Tap an organism in the world to inspect its DNA, genes, and colony membership.</div>
+      <div class="inspect-empty">Tap an organism to inspect DNA, genes, colony &amp; neural network.</div>
     </div>
   </div>
 
   <div id="panel-analytics" class="panel">
-    <h3><span>Population Stats</span><span id="analytics-tag">live</span></h3>
+    <h3><span>Population Analytics</span><span id="analytics-tag">live</span></h3>
     <div id="analytics-content">
       <div class="stat-row"><span class="k">Tick</span><span class="v" id="stat-tick">0</span></div>
       <div class="stat-row"><span class="k">Day</span><span class="v" id="stat-day">1</span></div>
@@ -148,26 +177,39 @@
       <div class="stat-row"><span class="k">Apoptosis</span><span class="v" id="stat-apoptosis">0</span></div>
       <div class="stat-row"><span class="k">Kills</span><span class="v" id="stat-kills">0</span></div>
       <div class="stat-row"><span class="k">Species</span><span class="v" id="stat-species">0</span></div>
+      <div class="stat-row"><span class="k">Top Species %</span><span class="v" id="stat-top-species">0</span></div>
+      <div class="stat-row"><span class="k">Avg Generation</span><span class="v" id="stat-gen">0</span></div>
+      <div class="stat-row"><span class="k">Avg Lifespan</span><span class="v" id="stat-lifespan">0</span></div>
+      <div class="stat-row"><span class="k">Colony Cells</span><span class="v" id="stat-colony-cells">0</span></div>
+      <div class="stat-row"><span class="k">Largest Colony</span><span class="v" id="stat-largest-colony">0</span></div>
       <div class="stat-row"><span class="k">Avg Energy</span><span class="v" id="stat-energy">0</span></div>
       <div class="stat-row"><span class="k">Avg Size</span><span class="v" id="stat-size">0</span></div>
       <div class="stat-row"><span class="k">Strength</span><span class="v" id="stat-strength">0</span></div>
       <div class="stat-row"><span class="k">Aggression</span><span class="v" id="stat-aggression">0</span></div>
       <div class="stat-row"><span class="k">Cooperation</span><span class="v" id="stat-cooperation">0</span></div>
       <div class="stat-row"><span class="k">Mutation Rate</span><span class="v" id="stat-mutation">0</span></div>
-      <div class="stat-row"><span class="k" style="color:#39ff14">Species</span><span class="v" id="stat-species">0</span></div>
-      <div class="stat-row"><span class="k" style="color:#39ff14">Top Species %</span><span class="v" id="stat-top-species">0</span></div>
-      <div class="stat-row"><span class="k" style="color:#39ff14">Avg Generation</span><span class="v" id="stat-gen">0</span></div>
-      <div class="stat-row"><span class="k" style="color:#39ff14">Avg Lifespan</span><span class="v" id="stat-lifespan">0</span></div>
-      <div class="stat-row"><span class="k" style="color:#39ff14">Colony Cells</span><span class="v" id="stat-colony-cells">0</span></div>
-      <div class="stat-row"><span class="k" style="color:#39ff14">Largest Colony</span><span class="v" id="stat-largest-colony">0</span></div>
-      <div style="padding:10px;border-top:1px solid #121822;">
-        <div style="font-size:9px;color:#647084;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Trait Distribution</div>
-        <div class="stat-row"><span class="k">Size</span><span class="v" id="trait-size">0</span></div>
-        <div class="stat-row"><span class="k">Strength</span><span class="v" id="trait-strength">0</span></div>
-        <div class="stat-row"><span class="k">Aggression</span><span class="v" id="trait-aggression">0</span></div>
-        <div class="stat-row"><span class="k">Altruism</span><span class="v" id="trait-altruism">0</span></div>
-        <div class="stat-row"><span class="k">Cooperation</span><span class="v" id="trait-cooperation">0</span></div>
+    </div>
+  </div>
+
+  <div id="panel-experiment" class="panel">
+    <h3><span>Experiment Lab</span><span id="exp-tag">configure</span></h3>
+    <div class="btn-group">
+      <button class="exp-btn primary" id="btn-run-exp">Run Experiment</button>
+      <button class="exp-btn" id="btn-compare-exp">Compare</button>
+    </div>
+    <div class="exp-config">
+      <div class="exp-field"><label>Experiment</label>
+        <select id="exp-select"></select>
       </div>
+      <div class="exp-field"><label>Replicates</label>
+        <input id="exp-replicates" type="number" value="5" min="1" max="20">
+      </div>
+      <div class="exp-field"><label>Ticks</label>
+        <input id="exp-ticks" type="number" value="500" min="50" max="5000">
+      </div>
+    </div>
+    <div class="exp-results" id="exp-results">
+      <div class="exp-empty" style="padding:10px;color:#6a7488;font-size:10.5px;text-align:center;">Run an experiment to see results</div>
     </div>
   </div>
 
@@ -179,7 +221,7 @@
   <div id="overlay-error">
     <div class="big" id="error-title">Error</div>
     <div class="sub" id="error-msg"></div>
-    <button id="error-reset">Reset</button>
+    <button id="error-reset">Reload</button>
   </div>
 </div>
 
@@ -194,10 +236,9 @@
     <input id="inp-speed" type="range" min="1" max="90" value="50">
     <span class="v" id="speed-val">50</span>
   </div>
-  <div style="font-size: 10px; color: #647084;">WebGL 3D &nbsp;|&nbsp; DNA genome &nbsp;|&nbsp; Hebbian NN &nbsp;|&nbsp; Colonies &nbsp;|&nbsp; Deterministic</div>
+  <div style="font-size: 10px; color: #6a7488;">WebGL 3D &nbsp;|&nbsp; DNA genome &nbsp;|&nbsp; Hebbian NN &nbsp;|&nbsp; Colonies &nbsp;|&nbsp; Deterministic</div>
 </footer>
 
-  <!-- Fallback: if the ES module (Three.js from CDN) fails to load, show a clear error -->
   <script>
     window.__dsReady = false;
     window.__dsError = null;
@@ -220,6 +261,6 @@
       }
     }, 6000);
   </script>
-  <script type="module" src="./web3d.js?v=6"></script>
+  <script type="module" src="./web3d.js?v=7"></script>
 </body>
 </html>
