@@ -3,11 +3,9 @@ import { OrbitControls } from "https://esm.sh/three@0.168.0/examples/jsm/control
 import {
   generateModel,
   morphotypeKey,
-  dnaToMorphotype,
-  dnaString,
 } from "./dist/dna3d.js";
 import { Simulation } from "./dist/simulation.js";
-import { genomeHashColor } from "./dist/genome.js";
+import { genomeHashColor, dnaToMorphotype, dnaString } from "./dist/genome.js";
 import { saveToJSON, loadFromJSON } from "./dist/serialization.js";
 import { runExperiment, getExperimentNames } from "./dist/experiments.js";
 
