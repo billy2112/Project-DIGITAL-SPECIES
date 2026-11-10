@@ -1,28 +1,27 @@
 import { genomeDistance } from "./genome.js";
 import { mean, stdDev } from "./data-export.js";
 export class NoveltyDetector {
-    maxHistory;
-    history = [];
-    detectedEvents = [];
-    baselineTraits = new Map(); // trait -> historical values
-    seenBodyPlans = new Set();
-    seenStrategies = new Set();
     constructor(maxHistory = 100) {
         this.maxHistory = maxHistory;
+        this.history = [];
+        this.detectedEvents = [];
+        this.baselineTraits = new Map();
+        this.seenBodyPlans = new Set();
+        this.seenStrategies = new Set();
     }
     record(sim) {
         const alive = sim.organisms.filter((o) => !o.dead);
         const snapshot = {
-            tick,
+            tick: sim.currentTick,
             organisms: alive.map((o) => ({
-                id,
-                parentId,
-                generation,
-                energy,
-                x,
-                y,
-                colonyId,
-                role,
+                id: o.id,
+                parentId: o.parentId,
+                generation: o.generation,
+                energy: o.energy,
+                x: o.x,
+                y: o.y,
+                colonyId: o.colonyId,
+                role: o.role,
                 genome: {
                     weights: Array.from(o.genome.weights),
                     traits: { ...o.genome.traits },
@@ -35,7 +34,6 @@ export class NoveltyDetector {
                 totalFood: 0,
             },
         };
-        // Compute world stats
         const snap = sim.getState().snapshot;
         const W = sim.world.width;
         let totalFood = 0, totalPheromone = 0;
@@ -53,81 +51,68 @@ export class NoveltyDetector {
     detect(sim) {
         const alive = sim.organisms.filter((o) => !o.dead);
         const events = [];
-        // 1. Detect new body plans (morphological innovation)
         for (const o of alive) {
-            const dnaStr = Array.from(o.genome.dna).map((b) => "ACGT"[b]).join("");
             const bp = this.dnaToBodyPlan(o.genome.dna);
             if (!this.seenBodyPlans.has(bp)) {
                 this.seenBodyPlans.add(bp);
                 events.push({
                     eventType: "morphology",
-                    tick,
-                    organismId,
-                    lineageId: o.parentId ?? o.id,
-                    description: `New body plan detected: ${bp}`,
+                    tick: sim.currentTick,
+                    organismId: o.id,
+                    lineageId: o.parentId !== null ? o.parentId : o.id,
+                    description: "New body plan detected: " + bp,
                     severity: "high",
                     evidence: { bodyPlan: 1, dnaNovelty: 1 },
                     geneticChanges: ["dna_region_change"],
-                    environmentalConditions: {
-                        food: sim.getState().snapshot.totalFood,
-                        tick,
-                    },
+                    environmentalConditions: { food: sim.getState().snapshot.totalFood, tick: sim.currentTick },
                 });
             }
         }
-        // 2. Detect cooperation emergence (colony formation)
         const colonies = sim.getState().colonies.filter((c) => !c.dead);
         if (colonies.length > 0 && this.history.length > 10) {
-            const prevColonies = this.history[this.history.length - 1]?.organisms.filter((o) => o.colonyId !== null).length || 0;
+            const prevColonies = this.history[this.history.length - 1] &&
+                this.history[this.history.length - 1].organisms.filter((o) => o.colonyId !== null).length || 0;
             const currColonies = alive.filter((o) => o.colonyId !== null).length;
             if (currColonies > prevColonies * 1.5 && currColonies > 5) {
                 events.push({
                     eventType: "cooperation",
-                    tick,
+                    tick: sim.currentTick,
                     organismId: -1,
                     lineageId: -1,
-                    description: `Cooperation surge: ${currColonies} organisms in colonies (was ${prevColonies})`,
+                    description: "Cooperation surge: " + currColonies + " organisms in colonies (was " + prevColonies + ")",
                     severity: "high",
-                    evidence: { colonyMembers, colonyCount: colonies.length },
+                    evidence: { colonyMembers: currColonies, colonyCount: colonies.length },
                     geneticChanges: ["adhesion_trait_shift"],
-                    environmentalConditions: {
-                        food: sim.getState().snapshot.totalFood,
-                        tick,
-                    },
+                    environmentalConditions: { food: sim.getState().snapshot.totalFood, tick: sim.currentTick },
                 });
             }
         }
-        // 3. Detect feeding strategy shifts (energy source changes)
         if (this.history.length > 20) {
-            const prevAvgEnergy = this.history[this.history.length - 10].organisms.reduce((s, o) => s + o.energy, 0) / this.history[this.history.length - 10].organisms.length;
+            const prevAvgEnergy = this.history[this.history.length - 10] &&
+                this.history[this.history.length - 10].organisms.reduce((s, o) => s + o.energy, 0) / this.history[this.history.length - 10].organisms.length || 0;
             const currAvgEnergy = alive.reduce((s, o) => s + o.energy, 0) / alive.length;
             const energyChange = (currAvgEnergy - prevAvgEnergy) / Math.max(prevAvgEnergy, 0.1);
             if (Math.abs(energyChange) > 0.5) {
                 events.push({
                     eventType: "feeding",
-                    tick,
+                    tick: sim.currentTick,
                     organismId: -1,
                     lineageId: -1,
-                    description: `Feeding strategy shift: avg energy changed ${(energyChange * 100).toFixed(1)}%`,
+                    description: "Feeding strategy shift: avg energy changed " + (energyChange * 100).toFixed(1) + "%",
                     severity: energyChange > 0 ? "medium" : "high",
                     evidence: { energyChange, avgEnergy: currAvgEnergy },
                     geneticChanges: ["consumption_trait_change"],
-                    environmentalConditions: {
-                        food: sim.getState().snapshot.totalFood,
-                        tick,
-                    },
+                    environmentalConditions: { food: sim.getState().snapshot.totalFood, tick: sim.currentTick },
                 });
             }
         }
-        // 4. Detect reproductive strategy shifts (sexual vs asexual)
-        const recentEvents = sim.getState(); // would need event history
         const sexualRatio = alive.filter((o) => o.generation > 1).length / alive.length;
         if (!this.seenStrategies.has("sexual")) {
             if (sexualRatio > 0.3) {
                 this.seenStrategies.add("sexual");
                 events.push({
                     eventType: "reproduction",
-                    tick,
+                    tick: sim.currentTick,
                     organismId: -1,
                     lineageId: -1,
                     description: "Sexual reproduction detected in population",
@@ -138,7 +123,6 @@ export class NoveltyDetector {
                 });
             }
         }
-        // 5. Detect species split (genome distance clustering)
         const THRESHOLD = 0.55;
         const visited = new Set();
         let speciesCount = 0;
@@ -151,6 +135,8 @@ export class NoveltyDetector {
             while (stack.length) {
                 const cur = stack.pop();
                 const curOrg = sim.organisms.find((x) => x.id === cur);
+                if (!curOrg)
+                    continue;
                 for (const other of alive) {
                     if (visited.has(other.id))
                         continue;
@@ -178,7 +164,6 @@ export class NoveltyDetector {
                         for (const other of prevAlive) {
                             if (prevVisited.has(other.id))
                                 continue;
-                            // approximate distance from stored traits
                             prevVisited.add(other.id);
                             stack.push(other.id);
                         }
@@ -187,10 +172,10 @@ export class NoveltyDetector {
                 if (speciesCount > prevSpecies * 1.5) {
                     events.push({
                         eventType: "species_split",
-                        tick,
+                        tick: sim.currentTick,
                         organismId: -1,
                         lineageId: -1,
-                        description: `Species radiation: ${speciesCount} species detected (was ~${prevSpecies})`,
+                        description: "Species radiation: " + speciesCount + " species detected (was ~" + prevSpecies + ")",
                         severity: "high",
                         evidence: { speciesCount, prevSpecies },
                         geneticChanges: ["genome_divergence"],
@@ -209,7 +194,6 @@ export class NoveltyDetector {
     }
     computeResult(sim, newEvents) {
         const alive = sim.organisms.filter((o) => !o.dead);
-        // Novelty score: fraction of organisms with novel traits vs baseline
         let novelCount = 0;
         for (const o of alive) {
             const traits = o.genome.traits;
@@ -227,7 +211,6 @@ export class NoveltyDetector {
                 novelCount++;
         }
         const noveltyScore = alive.length > 0 ? novelCount / alive.length : 0;
-        // Update baseline
         for (const o of alive) {
             const t = o.genome.traits;
             for (const [key, val] of Object.entries(t)) {
@@ -241,7 +224,7 @@ export class NoveltyDetector {
         const newBehaviors = newEvents.map((e) => e.description);
         const recommendations = this.generateRecommendations(newEvents);
         return {
-            events,
+            events: this.detectedEvents,
             noveltyScore,
             newBehaviors,
             recommendations,
@@ -270,8 +253,7 @@ export class NoveltyDetector {
     exportEventsCsv() {
         let out = "tick,event_type,organism_id,lineage_id,description,severity,genetic_changes\n";
         for (const e of this.detectedEvents) {
-            out += [e.tick, e.eventType, e.organismId, e.lineageId,
-                `"${e.description}"`, e.severity, e.geneticChanges.join(";")].join(",") + "\n";
+            out += [e.tick, e.eventType, e.organismId, e.lineageId, '"' + e.description + '"', e.severity, e.geneticChanges.join(";")].join(",") + "\n";
         }
         return out;
     }
@@ -280,7 +262,7 @@ export class NoveltyDetector {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `novelty_events_t${this.history[this.history.length - 1]?.tick ?? 0}.csv`;
+        a.download = "novelty_events_t" + (this.history[this.history.length - 1] ? this.history[this.history.length - 1].tick : 0) + ".csv";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
