@@ -63,7 +63,7 @@ export declare class Organism {
         events: ReproductionEvent[];
         attacks: AttackEvent[];
     };
-    tickMetabolism(): void;
+    tickMetabolism(world?: World | null): void;
     learn(reward: number): void;
     private memoryMean;
     private memoryWrite;
@@ -71,4 +71,32 @@ export declare class Organism {
     static reproduce(parent: Organism, childEnergy: number, rng: RNG, childId: number, sexual?: boolean, otherParent?: Organism | null, generationOffset?: number, colonyId?: number | null, role?: CellRole): Organism;
     static sexualReproduce(a: Organism, b: Organism, rng: RNG, childId: number, colonyId?: number | null, role?: CellRole): Organism;
     getState(): OrganismState;
+    serialize(): {
+        id: number;
+        x: number;
+        y: number;
+        energy: number;
+        age: number;
+        generation: number;
+        dead: boolean;
+        parentId: number | null;
+        colonyId: number | null;
+        role: CellRole;
+        genome: GenomeJSON;
+        memory: number[];
+    };
+    static deserialize(data: {
+        id: number;
+        x: number;
+        y: number;
+        energy: number;
+        age: number;
+        generation: number;
+        dead: boolean;
+        parentId: number | null;
+        colonyId: number | null;
+        role: CellRole;
+        genome: GenomeJSON;
+        memory: number[];
+    }): Organism;
 }

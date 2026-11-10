@@ -50,7 +50,12 @@ export class Simulation {
             foodMaxPerCell: this.config.foodMaxPerCell,
             foodSpawnChance: this.config.foodSpawnChance,
             pheromoneDecay: this.config.pheromoneDecay,
-        });
+            nutrientDecay: this.config.nutrientDecay,
+            nutrientRegenBoost: this.config.nutrientRegenBoost,
+            temperatureMin: this.config.temperatureMin,
+            temperatureMax: this.config.temperatureMax,
+            lightCycleLength: this.config.lightCycleLength,
+        }, this.rng);
         this.nextId = 0;
         this.nextColonyId = 0;
         this.seedPopulation(this.config.initialPopulation, this.config.initialEnergy);
@@ -213,9 +218,6 @@ export class Simulation {
                 const colonyNeed = c.energy < c.budThreshold() * 0.5;
                 const apoptosisChance = t.apoptosisTendency * 0.02 + (o.energy <= 5 ? 0.3 : 0) + (colonyNeed ? 0.05 : 0);
                 if (this.rng.random() < apoptosisChance && membersAlive.length > 2) {
-                    const decompEnergy = Math.max(0, o.energy) * 0.8;
-                    if (decompEnergy > 0)
-                        this.world.decompose(o.x, o.y, decompEnergy);
                     c.energy += o.energy * 0.7; // energy returned to colony
                     o.energy = 0;
                     o.dead = true;
@@ -392,9 +394,11 @@ export class Simulation {
             const reward = (after - before) * 0.1;
             org.learn(reward);
             if (org.dead) {
-                const decompEnergy = Math.max(0, after) * 0.8;
-                if (decompEnergy > 0)
-                    this.world.decompose(org.x, org.y, decompEnergy);
+                // Decomposition: return most of remaining energy to the environment as nutrients
+                const decomposeEnergy = Math.max(0, after) * 0.8;
+                if (decomposeEnergy > 0) {
+                    this.world.decompose(org.x, org.y, decomposeEnergy);
+                }
                 this.totalDeaths++;
                 events.push({ type: "death", tick: tick, organismId: org.id, x: org.x, y: org.y });
             }
@@ -508,6 +512,7 @@ export class Simulation {
     getOrganismColor(org) {
         return genomeHashColor(org.genome);
     }
+    // ---- Serialization ----
     captureState() {
         return {
             config: { ...this.config },

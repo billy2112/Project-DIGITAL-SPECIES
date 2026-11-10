@@ -46,4 +46,26 @@ export declare class Colony {
     }): void;
     budThreshold(): number;
     budCellCount(rng: RNG): number;
+    serialize(): {
+        id: number;
+        memberIds: number[];
+        x: number;
+        y: number;
+        energy: number;
+        age: number;
+        generation: number;
+        dead: boolean;
+        roleAssignment: Record<number, CellRole>;
+    };
+    static deserialize(data: {
+        id: number;
+        memberIds: number[];
+        x: number;
+        y: number;
+        energy: number;
+        age: number;
+        generation: number;
+        dead: boolean;
+        roleAssignment: Record<number, CellRole>;
+    }): Colony;
 }

@@ -92,7 +92,50 @@ export declare class Simulation {
         snapshot: {
             food: Float32Array;
             pheromone: Float32Array;
+            nutrients: Float32Array;
+            temperature: Float32Array;
+            light: Float32Array;
         };
     };
     getOrganismColor(org: Organism): string;
+    captureState(): {
+        config: SimulationConfig;
+        rngState: number;
+        tick: number;
+        nextId: number;
+        nextColonyId: number;
+        totals: {
+            births: number;
+            sexualBirths: number;
+            colonyBuds: number;
+            deaths: number;
+            apoptosis: number;
+            kills: number;
+            colonyDeaths: number;
+        };
+        world: ReturnType<World["serialize"]>;
+        organisms: ReturnType<Organism["serialize"]>[];
+        colonies: ReturnType<Colony["serialize"]>[];
+        events: SimEvent[];
+    };
+    restoreState(state: {
+        config: SimulationConfig;
+        rngState: number;
+        tick: number;
+        nextId: number;
+        nextColonyId: number;
+        totals: {
+            births: number;
+            sexualBirths: number;
+            colonyBuds: number;
+            deaths: number;
+            apoptosis: number;
+            kills: number;
+            colonyDeaths: number;
+        };
+        world: ReturnType<World["serialize"]>;
+        organisms: ReturnType<Organism["serialize"]>[];
+        colonies: ReturnType<Colony["serialize"]>[];
+        events: SimEvent[];
+    }): void;
 }

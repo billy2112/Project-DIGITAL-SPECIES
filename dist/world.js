@@ -1,3 +1,4 @@
+import { RNG } from "./rng.js";
 export const WORLD_DEFAULTS = {
     width: 100,
     height: 100,
@@ -23,7 +24,7 @@ export class World {
     config;
     organismIdCounter = 0;
     dayPhase = 0;
-    constructor(config = {}) {
+    constructor(config = {}, rng) {
         this.config = { ...WORLD_DEFAULTS, ...config };
         this.width = this.config.width;
         this.height = this.config.height;
@@ -33,10 +34,14 @@ export class World {
         this.nutrients = new Float32Array(size);
         this.temperature = new Float32Array(size);
         this.light = new Float32Array(size);
+        const r = rng ?? new RNG(Date.now());
         for (let i = 0; i < size; i++) {
-            this.food[i] = Math.random() * this.config.foodMaxPerCell;
+            this.food[i] = r.random() * this.config.foodMaxPerCell;
             const y = i / this.width;
-            this.temperature[i] = this.config.temperatureMin + (this.config.temperatureMax - this.config.temperatureMin) * (0.5 + 0.5 * Math.sin((y * Math.PI) / this.height));
+            this.temperature[i] =
+                this.config.temperatureMin +
+                    (this.config.temperatureMax - this.config.temperatureMin) *
+                        (0.5 + 0.5 * Math.sin((y * Math.PI) / this.height));
             this.light[i] = 0.5;
         }
     }
@@ -76,6 +81,14 @@ export class World {
         this.nutrients[i] = Math.max(0, available - take);
         return take;
     }
+    decayNutrients() {
+        const size = this.width * this.height;
+        for (let i = 0; i < size; i++) {
+            this.nutrients[i] *= 1 - this.config.nutrientDecay;
+            if (this.nutrients[i] < 0.001)
+                this.nutrients[i] = 0;
+        }
+    }
     temperatureAt(x, y) {
         return this.temperature[this.idx(x, y)];
     }
@@ -89,14 +102,6 @@ export class World {
         const size = this.width * this.height;
         for (let i = 0; i < size; i++) {
             this.light[i] = Math.max(0, Math.min(1, lightLevel));
-        }
-    }
-    decayNutrients() {
-        const size = this.width * this.height;
-        for (let i = 0; i < size; i++) {
-            this.nutrients[i] *= 1 - this.config.nutrientDecay;
-            if (this.nutrients[i] < 0.001)
-                this.nutrients[i] = 0;
         }
     }
     regenerateFood(rng) {
@@ -153,6 +158,7 @@ export class World {
             light: new Float32Array(this.light),
         };
     }
+    // ---- Serialization ----
     serialize() {
         return {
             width: this.width,

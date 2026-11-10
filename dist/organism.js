@@ -134,6 +134,7 @@ export class Organism {
                 world.consumeFood(fx, fy, eat);
                 this.energy += eat * 0.8;
             }
+            // Absorb nutrients from decomposition at this cell
             const nAvailable = world.nutrientsAt(fx, fy);
             const nTake = Math.min(nAvailable, consume * 10);
             if (nTake > 0) {
@@ -192,6 +193,7 @@ export class Organism {
     tickMetabolism(world = null) {
         const t = this.genome.traits;
         const sizePenalty = t.size * 0.1;
+        // Temperature stress: deviating from optimal (22.5) raises maintenance cost
         let tempMultiplier = 1;
         if (world) {
             const temp = world.temperatureAt(this.x, this.y);
@@ -201,7 +203,9 @@ export class Organism {
             tempMultiplier = 1 + stress * 0.5;
         }
         tempMultiplier = Math.min(Math.max(tempMultiplier, 0), 5);
-        this.energy -= (t.baseMaintenance + t.thinkCost * this.brain.hidden + sizePenalty) * tempMultiplier;
+        this.energy -=
+            (t.baseMaintenance + t.thinkCost * this.brain.hidden + sizePenalty) *
+                tempMultiplier;
         if (!Number.isFinite(this.energy) || this.energy < 0)
             this.energy = 0;
         this.age += 1;
@@ -273,6 +277,7 @@ export class Organism {
             strength: this.genome.traits.strength,
         };
     }
+    // ---- Serialization ----
     serialize() {
         return {
             id: this.id,

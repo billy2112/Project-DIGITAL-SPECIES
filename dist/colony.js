@@ -70,6 +70,7 @@ export class Colony {
     budCellCount(rng) {
         return 2 + rng.int(0, Math.min(4, Math.max(1, this.memberIds.length)));
     }
+    // ---- Serialization ----
     serialize() {
         return {
             id: this.id,

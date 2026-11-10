@@ -62,3 +62,11 @@ export declare function genomeDistance(a: Genome, b: Genome): number;
 export declare function genomeHashColor(g: Genome): string;
 export declare function dnaString(dna: Uint8Array): string;
 export declare function dnaFromString(s: string): Uint8Array;
+export interface GenomeJSON {
+    weights: number[];
+    traits: GenomeTraits;
+    dna: number[];
+    dnaVersion: number;
+}
+export declare function serializeGenome(g: Genome): GenomeJSON;
+export declare function deserializeGenome(json: GenomeJSON): Genome;

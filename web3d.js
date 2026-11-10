@@ -1,14 +1,10 @@
 import * as THREE from "https://esm.sh/three@0.168.0";
 import { OrbitControls } from "https://esm.sh/three@0.168.0/examples/jsm/controls/OrbitControls.js";
-import {
-  generateModel,
-  morphotypeKey,
-  dnaToMorphotype,
-  dnaString,
-} from "./dist/dna3d.js";
+import { generateModel, morphotypeKey } from "./dist/dna3d.js";
 import { Simulation } from "./dist/simulation.js";
 import { genomeHashColor, dnaToMorphotype as dnaToMorphotype2, dnaString as dnaString2, genomeDistance } from "./dist/genome.js";
-import { saveToJSON, loadFromJSON, downloadBlob } from "./dist/serialization.js";
+import { saveToJSON, loadFromJSON } from "./dist/serialization.js";
+import { downloadBlob } from "./dist/data-export.js";
 import { runExperiment, getExperimentNames, downloadExperimentCsv, downloadExperimentJson } from "./dist/experiment-runner.js";
 import { buildPhylogeny, phylogenyToNewick, phylogenyCsv, downloadPhylogenyCsv, downloadPhylogenyNewick } from "./dist/phylogeny.js";
 import { analyzeFitnessLandscape, fitnessLandscapeToCsv, fitnessLandscapeSummary } from "./dist/fitness-landscape.js";

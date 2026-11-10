@@ -1,5 +1,6 @@
 const MUL = 0x100000000;
 export class RNG {
+    state;
     constructor(seed) {
         this.state = seed >>> 0;
     }
