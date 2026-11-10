@@ -106,6 +106,7 @@ let renderer, scene, camera, controls;
 let grid, foodMesh;
 let organGroups = new Map();
 let bondLines = null;
+let selectionRing = null;
 
 function initThree() {
   try {
@@ -182,6 +183,18 @@ function initThree() {
   bondLines.frustumCulled = false;
   scene.add(bondLines);
 
+  // Selection ring under tapped organism
+  const ringGeo = new THREE.RingGeometry(0.9, 1.1, 32);
+  const ringMat = new THREE.LineBasicMaterial({
+    color: 0x39ff14,
+    transparent: true,
+    opacity: 0,
+  });
+  selectionRing = new THREE.LineLoop(ringGeo, ringMat);
+  selectionRing.rotation.x = -Math.PI / 2;
+  selectionRing.visible = false;
+  scene.add(selectionRing);
+
 window.addEventListener("resize", onResize);
 canvas.addEventListener("pointerdown", onPointerDown);
 canvas.addEventListener("touchstart", function (e) {
@@ -201,7 +214,7 @@ canvas.addEventListener("touchstart", function (e) {
   var wx = target.x;
   var wy = target.z;
   var best = null;
-  var bestD = 2.5;
+  var bestD = 6.0;
   for (var i = 0; i < sim.organisms.length; i++) {
     var o = sim.organisms[i];
     var d = Math.hypot(o.x - wx, o.y - wy);
@@ -366,7 +379,7 @@ function updateOrganisms() {
     const g = getGroup(key, morpho);
     const idx = g.count++;
     const s = org.genome.traits.size;
-    const scale = 0.6 + 0.9 * s;
+    const scale = 0.8 + 1.3 * s;
     const isSelected = selectedId !== null && org.id === selectedId;
     dummy.position.set(org.x, 0.5, org.y);
     dummy.rotation.set(0, org.age * 0.012, 0);
@@ -628,7 +641,7 @@ function onPointerDown(e) {
   const wy = target.z;
   // Find nearest organism to the click point in world space
   let best = null;
-  let bestD = 2.5; // click radius in world units
+  let bestD = 6.0; // generous click radius in world units
   for (const o of sim.organisms) {
     const d = Math.hypot(o.x - wx, o.y - wy);
     if (d < bestD) {
@@ -670,6 +683,25 @@ function animate(now) {
       acc -= steps * msPerTick;
 
       updateOrganisms();
+
+      // Update selection ring under tapped organism
+      if (selectionRing) {
+        if (selectedId !== null) {
+          const org = sim.organisms.find((o) => o.id === selectedId);
+          if (org) {
+            selectionRing.position.set(org.x, 0.46, org.y);
+            selectionRing.visible = true;
+            // Pulse opacity
+            const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 400);
+            selectionRing.material.opacity = pulse;
+          } else {
+            selectionRing.visible = false;
+          }
+        } else {
+          selectionRing.visible = false;
+        }
+      }
+
       controls?.update();
       renderer.render(scene, camera);
 
