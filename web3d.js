@@ -422,6 +422,13 @@ function updateOrganisms() {
   foodMesh.count = foodInstances.length;
   const fd = new THREE.Object3D();
   const fc = new THREE.Color();
+  if (!foodMesh.instanceColor || foodMesh.instanceColor.count < foodInstances.length) {
+    foodMesh.instanceColor = new THREE.InstancedBufferAttribute(
+      new Float32Array(Math.max(foodInstances.length, 1) * 3),
+      3,
+    );
+  }
+  foodMesh.instanceColor.count = foodInstances.length;
   for (let i = 0; i < foodInstances.length; i++) {
     const f = foodInstances[i];
     fd.position.set(f.x, f.s * 0.4, f.y);
