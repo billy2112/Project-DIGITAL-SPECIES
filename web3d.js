@@ -593,19 +593,21 @@ function animate(now) {
       }
       acc -= steps * msPerTick;
 
-      updateOrganisms();
+      try { updateOrganisms(); } catch (e) { showError("updateOrganisms: " + (e && e.message ? e.message : String(e))); }
       controls?.update();
       renderer.render(scene, camera);
 
       if (frame % 6 === 0) {
-        drawHud();
-        updateInspector();
-        noveltyDetector.record(sim);
-        const ndResult = noveltyDetector.detect(sim);
-        if (ndResult.newBehaviors.length > 0) {
-          els.noveltyBadge.classList.add("show");
-          els.noveltyBadge.textContent = "NEW: " + ndResult.newBehaviors[0];
-        }
+        try { drawHud(); } catch (e) { showError("drawHud: " + (e && e.message ? e.message : String(e))); }
+        try { updateInspector(); } catch (e) { showError("inspector: " + (e && e.message ? e.message : String(e))); }
+        try { noveltyDetector.record(sim); } catch (e) { showError("novelty.record: " + (e && e.message ? e.message : String(e))); }
+        try {
+          const ndResult = noveltyDetector.detect(sim);
+          if (ndResult.newBehaviors.length > 0) {
+            els.noveltyBadge.classList.add("show");
+            els.noveltyBadge.textContent = "NEW: " + ndResult.newBehaviors[0];
+          }
+        } catch (e) { showError("novelty.detect: " + (e && e.message ? e.message : String(e))); }
       }
 
       fpsAcc += dt;
