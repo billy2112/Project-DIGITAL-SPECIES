@@ -3,7 +3,6 @@ import { World } from "./world.js";
 import { RNG } from "./rng.js";
 import { createRandomGenome, DEFAULT_LAYOUT } from "./genome.js";
 import { Organism } from "./organism.js";
-import { CellRole } from "./colony.js";
 
 export const EXPERIMENTS = {
   "resource-scarcity": {
