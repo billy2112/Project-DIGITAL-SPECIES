@@ -5,7 +5,7 @@ import {
   morphotypeKey,
 } from "./dist/dna3d.js";
 import { Simulation } from "./dist/simulation.js";
-import { genomeHashColor, dnaToMorphotype, dnaString } from "./dist/genome.js";
+import { genomeHashColor, dnaToMorphotype, dnaString, genomeDistance } from "./dist/genome.js";
 import { saveToJSON, loadFromJSON } from "./dist/serialization.js";
 import { runExperiment, getExperimentNames } from "./dist/experiments.js";
 
@@ -185,7 +185,7 @@ function initThree() {
 window.addEventListener("resize", onResize);
 canvas.addEventListener("pointerdown", onPointerDown);
 canvas.addEventListener("touchstart", function (e) {
-  // Convert first touch to a pointerdown-like event
+  if (!sim) return;
   var t = e.touches[0];
   var rect = canvas.getBoundingClientRect();
   var mouse = new THREE.Vector2(
@@ -194,22 +194,20 @@ canvas.addEventListener("touchstart", function (e) {
   );
   var raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(mouse, camera);
-  var hits = [];
-  organGroups.forEach(function (g) {
-    hits.push.apply(hits, raycaster.intersectObject(g.mesh, false));
-  });
-  hits.sort(function (a, b) { return a.distance - b.distance; });
-  selectedId = null;
-  if (hits.length) {
-    var pt = hits[0].point;
-    var best = null, bestD = 1e9;
-    for (var i = 0; i < sim.organisms.length; i++) {
-      var o = sim.organisms[i];
-      var d = Math.hypot(o.x - pt.x, o.y - pt.z);
-      if (d < bestD) { bestD = d; best = o; }
-    }
-    selectedId = best ? best.id : null;
+  var plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  var target = new THREE.Vector3();
+  raycaster.ray.intersectPlane(plane, target);
+  if (!target) return;
+  var wx = target.x;
+  var wy = target.z;
+  var best = null;
+  var bestD = 2.5;
+  for (var i = 0; i < sim.organisms.length; i++) {
+    var o = sim.organisms[i];
+    var d = Math.hypot(o.x - wx, o.y - wy);
+    if (d < bestD) { bestD = d; best = o; }
   }
+  selectedId = best ? best.id : null;
   updateInspector();
 }, { passive: false });
 return true;
@@ -368,10 +366,11 @@ function updateOrganisms() {
     const g = getGroup(key, morpho);
     const idx = g.count++;
     const s = org.genome.traits.size;
-    const scale = 0.35 + 0.55 * s;
-    dummy.position.set(org.x, 0.45, org.y);
+    const scale = 0.6 + 0.9 * s;
+    const isSelected = selectedId !== null && org.id === selectedId;
+    dummy.position.set(org.x, 0.5, org.y);
     dummy.rotation.set(0, org.age * 0.012, 0);
-    dummy.scale.set(scale, scale, scale);
+    dummy.scale.set(scale * (isSelected ? 1.4 : 1), scale * (isSelected ? 1.4 : 1), scale * (isSelected ? 1.4 : 1));
     dummy.updateMatrix();
     g.matrices[idx] = dummy.matrix.elements.slice();
 
@@ -381,7 +380,13 @@ function updateOrganisms() {
       const ch = colonyColor(org.colonyId);
       base.lerp(ch, 0.4);
     }
-    g.colors[idx] = [base.r, base.g, base.b];
+    // Selection brightens and adds emission
+    if (isSelected) {
+      base = new THREE.Color(0xffffff);
+      g.colors[idx] = [1, 1, 1];
+    } else {
+      g.colors[idx] = [base.r, base.g, base.b];
+    }
   }
 
   const orgById = new Map();
@@ -487,6 +492,78 @@ function drawHud() {
   setText(els.cooperation, st.avgCooperation.toFixed(2));
   setText(els.mutation, st.avgMutationRate.toFixed(4));
 
+  // Scientific computations from live organism data
+  const alive = sim.organisms.filter((o) => !o.dead);
+  let totalGen = 0, totalAge = 0, maxAge = 0;
+  let totalSize = 0, totalStrength = 0, totalAggression = 0;
+  let totalAltruism = 0, totalCooperation = 0;
+  for (const o of alive) {
+    totalGen += o.generation;
+    totalAge += o.age;
+    if (o.age > maxAge) maxAge = o.age;
+    const t = o.genome.traits;
+    totalSize += t.size;
+    totalStrength += t.strength;
+    totalAggression += t.aggression;
+    totalAltruism += t.altruism;
+    totalCooperation += t.cooperation;
+  }
+  const n = alive.length;
+  const avgGen = n > 0 ? (totalGen / n).toFixed(1) : "0";
+  const avgLife = n > 0 ? (totalAge / n).toFixed(1) : "0";
+  const avgSize = n > 0 ? (totalSize / n).toFixed(2) : "0";
+  const avgStr = n > 0 ? (totalStrength / n).toFixed(2) : "0";
+  const avgAgg = n > 0 ? (totalAggression / n).toFixed(2) : "0";
+  const avgAlt = n > 0 ? (totalAltruism / n).toFixed(2) : "0";
+  const avgCoop = n > 0 ? (totalCooperation / n).toFixed(2) : "0";
+  setText(els.statGen, avgGen);
+  setText(els.statLifespan, avgLife);
+  setText(els.traitSize, avgSize);
+  setText(els.traitStrength, avgStr);
+  setText(els.traitAggression, avgAgg);
+  setText(els.traitAltruism, avgAlt);
+  setText(els.traitCooperation, avgCoop);
+
+  // Species breakdown: cluster by genome distance
+  const THRESHOLD = 0.55;
+  const visited = new Set();
+  let speciesCount = 0;
+  let largestSpecies = 0;
+  for (const o of alive) {
+    if (visited.has(o.id)) continue;
+    speciesCount++;
+    let size = 0;
+    const stack = [o.id];
+    visited.add(o.id);
+    while (stack.length) {
+      const cur = stack.pop();
+      size++;
+      const curOrg = sim.organisms.find((x) => x.id === cur);
+      if (!curOrg) continue;
+      for (const other of alive) {
+        if (visited.has(other.id)) continue;
+        const d = genomeDistance(curOrg.genome, other.genome);
+        if (d < THRESHOLD) {
+          visited.add(other.id);
+          stack.push(other.id);
+        }
+      }
+    }
+    if (size > largestSpecies) largestSpecies = size;
+  }
+  setText(els.statTopSpecies, n > 0 ? ((largestSpecies / n) * 100).toFixed(0) + "%" : "0");
+
+  // Colony stats
+  const colonies = [...sim.colonies.values()].filter((c) => !c.dead);
+  let totalColonyCells = 0;
+  let largestColony = 0;
+  for (const c of colonies) {
+    totalColonyCells += c.memberIds.length;
+    if (c.memberIds.length > largestColony) largestColony = c.memberIds.length;
+  }
+  setText(els.statColonyCells, totalColonyCells);
+  setText(els.statLargestColony, largestColony);
+
   setText(els.sysTick, st.tick.toLocaleString());
 }
 
@@ -542,23 +619,24 @@ function onPointerDown(e) {
   );
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(mouse, camera);
-  const hits = [];
-  organGroups.forEach((g) => hits.push(...raycaster.intersectObject(g.mesh, false)));
-  hits.sort((a, b) => a.distance - b.distance);
-  selectedId = null;
-  if (hits.length) {
-    const pt = hits[0].point;
-    let best = null,
-      bestD = 1e9;
-    for (const o of sim.organisms) {
-      const d = Math.hypot(o.x - pt.x, o.y - pt.z);
-      if (d < bestD) {
-        bestD = d;
-        best = o;
-      }
+  // Raycast against the ground plane (y=0) to get click world position
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const target = new THREE.Vector3();
+  raycaster.ray.intersectPlane(plane, target);
+  if (!target) return;
+  const wx = target.x;
+  const wy = target.z;
+  // Find nearest organism to the click point in world space
+  let best = null;
+  let bestD = 2.5; // click radius in world units
+  for (const o of sim.organisms) {
+    const d = Math.hypot(o.x - wx, o.y - wy);
+    if (d < bestD) {
+      bestD = d;
+      best = o;
     }
-    selectedId = best ? best.id : null;
   }
+  selectedId = best ? best.id : null;
   updateInspector();
 }
 
