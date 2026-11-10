@@ -599,7 +599,7 @@ function animate(now) {
 
       if (frame % 6 === 0) {
         drawHud();
-        drawInspector();
+        updateInspector();
         noveltyDetector.record(sim);
         const ndResult = noveltyDetector.detect(sim);
         if (ndResult.newBehaviors.length > 0) {
@@ -649,7 +649,7 @@ function bindUI() {
         }
         updateOrganisms();
         drawHud();
-        drawInspector();
+        updateInspector();
       }
     });
   }
