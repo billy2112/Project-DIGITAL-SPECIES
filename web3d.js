@@ -91,22 +91,22 @@ const ROLE_COLORS = {
 
 let inspectOpen = false;
 let analyticsOpen = false;
+let webglFailed = false;
 
 // ---- Three.js ----
 let renderer, scene, camera, controls;
 let grid, foodMesh;
 let organGroups = new Map();
 let bondLines = null;
-let webglFailed = false;
-
-const errOverlay = document.createElement("div");
-errOverlay.style.cssText = "position:absolute;inset:0;background:#0a0d15;color:#fff;display:none;align-items:center;justify-content:center;z-index:70;flex-direction:column;gap:12px;padding:24px;text-align:center;";
-errOverlay.innerHTML = `<div style="color:#ff4d4d;font-weight:800;font-size:16px" id="err-title">Error</div><div style="color:#8fa0b4;font-size:12px;max-width:320px;line-height:1.5" id="err-msg"></div><button style="margin-top:14px;padding:8px 14px;border-radius:3px;border:none;background:#39ff14;color:#000;font-weight:700;cursor:pointer">Reset</button>`;
-document.body.appendChild(errOverlay);
 
 function initThree() {
   try {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: "high-performance" });
+    renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: false,
+      alpha: false,
+      powerPreference: "high-performance",
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight);
     renderer.shadowMap.enabled = true;
@@ -114,14 +114,19 @@ function initThree() {
   } catch (e) {
     webglFailed = true;
     showError("WebGL unavailable on this device. Try another browser.");
-    return;
+    return false;
   }
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x030508);
   scene.fog = new THREE.FogExp2(0x030508, 0.012);
 
-  camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / Math.max(canvas.clientHeight, 1), 0.5, 400);
+  camera = new THREE.PerspectiveCamera(
+    50,
+    canvas.clientWidth / Math.max(canvas.clientHeight, 1),
+    0.5,
+    400,
+  );
   camera.position.set(90, 60, 90);
 
   try {
@@ -147,7 +152,11 @@ function initThree() {
   scene.add(grid);
 
   const foodGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-  const foodMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x113311, emissiveIntensity: 0.5 });
+  const foodMat = new THREE.MeshStandardMaterial({
+    color: 0x22c55e,
+    emissive: 0x113311,
+    emissiveIntensity: 0.5,
+  });
   foodMesh = new THREE.InstancedMesh(foodGeo, foodMat, 8192);
   foodMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   foodMesh.castShadow = true;
@@ -156,18 +165,24 @@ function initThree() {
 
   bondLines = new THREE.LineSegments(
     new THREE.BufferGeometry(),
-    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
+    new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.35,
+    }),
   );
   bondLines.frustumCulled = false;
   scene.add(bondLines);
 
   window.addEventListener("resize", onResize);
   canvas.addEventListener("pointerdown", onPointerDown);
+  return true;
 }
 
 function onResize() {
   if (webglFailed || !renderer || !camera) return;
-  const w = canvas.clientWidth, h = Math.max(canvas.clientHeight, 1);
+  const w = canvas.clientWidth;
+  const h = Math.max(canvas.clientHeight, 1);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
@@ -205,13 +220,14 @@ function buildGeometry(parts) {
   for (const p of parts) {
     let geo;
     if (p.kind === "sphere") geo = new THREE.SphereGeometry(1, 10, 8);
-    else if (p.kind === "cylinder") geo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false);
+    else if (p.kind === "cylinder")
+      geo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false);
     else geo = new THREE.BoxGeometry(1, 1, 1);
     const m = new THREE.Matrix4();
     m.compose(
       new THREE.Vector3(...p.position),
       new THREE.Euler(...p.rotation),
-      new THREE.Vector3(...p.scale)
+      new THREE.Vector3(...p.scale),
     );
     geo.applyMatrix4(m);
     const pos = geo.attributes.position.array;
@@ -227,14 +243,24 @@ function buildGeometry(parts) {
       const ind = geo.index.array;
       for (let i = 0; i < ind.length; i++) indices.push(base + ind[i]);
     } else {
-      for (let i = 0; i < nv; i += 3) indices.push(base + i, base + i + 1, base + i + 2);
+      for (let i = 0; i < nv; i += 3)
+        indices.push(base + i, base + i + 1, base + i + 2);
     }
     vi += nv;
   }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
-  geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  geo.setAttribute(
+    "normal",
+    new THREE.Float32BufferAttribute(normals, 3),
+  );
+  geo.setAttribute(
+    "color",
+    new THREE.Float32BufferAttribute(colors, 3),
+  );
   geo.setIndex(indices);
   geo.computeBoundingSphere();
   return geo;
@@ -255,13 +281,26 @@ function getGroup(key, morpho) {
   if (g) return g;
   const parts = generateModel(morpho, 60, 1);
   const geometry = buildGeometry(parts);
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1 });
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.6,
+    metalness: 0.1,
+  });
   const mesh = new THREE.InstancedMesh(geometry, mat, 8192);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   scene.add(mesh);
-  g = { key, mesh, parts, mat, matrices: [], colors: [], count: 0, dummy: new THREE.Object3D() };
+  g = {
+    key,
+    mesh,
+    parts,
+    mat,
+    matrices: [],
+    colors: [],
+    count: 0,
+    dummy: new THREE.Object3D(),
+  };
   organGroups.set(key, g);
   return g;
 }
@@ -315,7 +354,8 @@ function updateOrganisms() {
   let bondCount = 0;
   for (const c of sim.colonies.values()) {
     if (c.dead || c.memberIds.length === 0) continue;
-    const cx = c.x, cy = c.y;
+    const cx = c.x,
+      cy = c.y;
     for (const mid of c.memberIds) {
       if (bondCount >= MAX_BONDS) break;
       const o = orgById.get(mid);
@@ -327,13 +367,22 @@ function updateOrganisms() {
   }
 
   organGroups.forEach((g) => {
-    if (g.count === 0) { g.mesh.count = 0; return; }
+    if (g.count === 0) {
+      g.mesh.count = 0;
+      return;
+    }
     g.mesh.count = g.count;
     for (let i = 0; i < g.count; i++) {
-      g.mesh.setMatrixAt(i, new THREE.Matrix4().fromArray(g.matrices[i]));
+      g.mesh.setMatrixAt(
+        i,
+        new THREE.Matrix4().fromArray(g.matrices[i]),
+      );
     }
     if (!g.mesh.instanceColor || g.mesh.instanceColor.count < g.count) {
-      g.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(g.count * 3), 3);
+      g.mesh.instanceColor = new THREE.InstancedBufferAttribute(
+        new Float32Array(g.count * 3),
+        3,
+      );
     }
     g.mesh.instanceColor.count = g.count;
     for (let i = 0; i < g.count; i++) {
@@ -362,7 +411,10 @@ function updateOrganisms() {
   const linePos = bondLines.geometry.attributes.position;
   const needed = bondPos.length;
   if (!linePos || linePos.count * 3 < needed) {
-    bondLines.geometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(needed), 3));
+    bondLines.geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(new Float32Array(needed), 3),
+    );
   }
   const arr = bondLines.geometry.attributes.position.array;
   for (let i = 0; i < needed; i++) arr[i] = bondPos[i];
@@ -393,26 +445,20 @@ function drawHud() {
   els.mutation.textContent = st.avgMutationRate.toFixed(4);
 
   els.sysTick.textContent = st.tick.toLocaleString();
-  if (frame % 30 === 0) {
-    const alive = sim.organisms.filter((o) => !o.dead);
-    const col = alive.length > 0 ? alive[0] : null;
-    if (col) {
-      const t = col.genome.traits;
-      els.inspectTag.textContent = `id ${col.id}`;
-    }
-  }
 }
 
 function updateInspector() {
   if (!sim) return;
   const org = sim.organisms.find((o) => o.id === selectedId);
   if (!org) {
-    els.inspectContent.innerHTML = `<div style="padding:14px 10px;color:#647084;font-size:11px;font-style:italic;">Tap an organism in the world to inspect its DNA, genes, and colony membership.</div>`;
+    els.inspectContent.innerHTML =
+      '<div style="padding:14px 10px;color:#647084;font-size:11px;font-style:italic;">Tap an organism in the world to inspect its DNA, genes, and colony membership.</div>';
     return;
   }
   const t = org.genome.traits;
   const morpho = dnaToMorphotype(org.genome.dna);
-  const colony = org.colonyId !== null ? sim.colonies.get(org.colonyId) : null;
+  const colony =
+    org.colonyId !== null ? sim.colonies.get(org.colonyId) : null;
   const rows = [
     ["Role", org.role],
     ["DNA", dnaString(org.genome.dna)],
@@ -425,7 +471,10 @@ function updateInspector() {
     ["Altruism", t.altruism.toFixed(2)],
     ["Biolum.", t.bioluminescence.toFixed(2)],
     ["Mutation", t.evolvableMutationRate.toFixed(4)],
-    ["Body plan", `${morpho.bodyPlan} · ${morpho.segmentCount} seg · ${morpho.limbPairs} limbs`],
+    [
+      "Body plan",
+      `${morpho.bodyPlan} · ${morpho.segmentCount} seg · ${morpho.limbPairs} limbs`,
+    ],
     ["Colony", colony ? colony.id.toString() : "— (unicellular)"],
   ];
   let html = "";
@@ -454,231 +503,268 @@ function onPointerDown(e) {
   selectedId = null;
   if (hits.length) {
     const pt = hits[0].point;
-    let best = null, bestD = 1e9;
+    let best = null,
+      bestD = 1e9;
     for (const o of sim.organisms) {
       const d = Math.hypot(o.x - pt.x, o.y - pt.z);
-      if (d < bestD) { bestD = d; best = o; }
+      if (d < bestD) {
+        bestD = d;
+        best = o;
+      }
     }
     selectedId = best ? best.id : null;
   }
   updateInspector();
 }
 
+function showError(msg) {
+  webglFailed = true;
+  if (els.errorTitle) els.errorTitle.textContent = "Error";
+  if (els.errorMsg) els.errorMsg.textContent = msg;
+  if (els.error) els.error.classList.add("show");
+}
+
 function animate(now) {
   requestAnimationFrame(animate);
-  if (webglFailed) return;
   try {
-    const dt = Math.min(now - last, 200);
-    last = now;
-    acc += dt;
-    const cap = MAX_STEPS * msPerTick;
-    if (acc > cap) acc = cap;
-    let steps = running ? Math.floor(acc / msPerTick) : 0;
-    if (steps > MAX_STEPS) steps = MAX_STEPS;
-    for (let i = 0; i < steps; i++) {
-      try { sim.step(); } catch (e) {
-        showError("Simulation error: " + (e && e.message ? e.message : String(e)));
-        return;
+    if (!webglFailed && renderer && scene && camera) {
+      const dt = Math.min(now - last, 200);
+      last = now;
+      acc += dt;
+      const cap = MAX_STEPS * msPerTick;
+      if (acc > cap) acc = cap;
+      let steps = running ? Math.floor(acc / msPerTick) : 0;
+      if (steps > MAX_STEPS) steps = MAX_STEPS;
+      for (let i = 0; i < steps; i++) {
+        try {
+          sim.step();
+        } catch (e) {
+          showError("Simulation error: " + (e && e.message ? e.message : String(e)));
+          running = false;
+          break;
+        }
       }
-    }
-    acc -= steps * msPerTick;
+      acc -= steps * msPerTick;
 
-    updateOrganisms();
-    controls?.update();
-    renderer.render(scene, camera);
+      updateOrganisms();
+      controls?.update();
+      renderer.render(scene, camera);
 
-    if (frame % 6 === 0) {
-      drawHud();
-      drawInspector();
-    }
+      if (frame % 6 === 0) {
+        drawHud();
+        drawInspector();
+      }
 
-    // FPS
-    fpsAcc += dt;
-    fpsFrames++;
-    if (fpsAcc >= 1000) {
-      fps = Math.round((fpsFrames * 1000) / fpsAcc);
-      fpsAcc = 0;
-      fpsFrames = 0;
-      els.sysFps.textContent = fps;
+      fpsAcc += dt;
+      fpsFrames++;
+      if (fpsAcc >= 1000) {
+        fps = Math.round((fpsFrames * 1000) / fpsAcc);
+        fpsAcc = 0;
+        fpsFrames = 0;
+        if (els.sysFps) els.sysFps.textContent = fps;
+      }
+      frame++;
     }
-    frame++;
   } catch (e) {
     showError("Render error: " + (e && e.message ? e.message : String(e)));
   }
 }
 
-function showError(msg) {
-  webglFailed = true;
-  document.getElementById("err-title").textContent = "Error";
-  document.getElementById("err-msg").textContent = msg;
-  errOverlay.style.display = "flex";
-  const btn = errOverlay.querySelector("button");
-  btn.onclick = () => {
-    errOverlay.style.display = "none";
-    webglFailed = false;
-    running = true;
-    last = performance.now();
-    acc = 0;
-    frame = 0;
-    initThree();
-    if (!webglFailed) {
-      createSim();
-      bindUI();
-    }
-  };
-}
-
 function bindUI() {
-  els.play.addEventListener("click", () => {
-    running = !running;
-    els.play.textContent = running ? "Pause" : "Resume";
-    els.sysState.textContent = running ? "RUNNING" : "PAUSED";
-    els.sysState.style.color = running ? "#39ff14" : "#ff8c8c";
-    els.paused.classList.toggle("hidden", running);
-    els.paused.classList.toggle("show", !running);
-  });
-  els.step.addEventListener("click", () => {
-    if (sim) {
-      try { sim.step(); } catch (e) {
-        showError("Simulation error: " + (e && e.message ? e.message : String(e)));
-        return;
+  if (els.play) {
+    els.play.addEventListener("click", () => {
+      running = !running;
+      els.play.textContent = running ? "Pause" : "Resume";
+      if (els.sysState) {
+        els.sysState.textContent = running ? "RUNNING" : "PAUSED";
+        els.sysState.style.color = running ? "#39ff14" : "#ff8c8c";
       }
-      updateOrganisms();
-      drawHud();
-      drawInspector();
-    }
-  });
-  els.reset.addEventListener("click", () => {
-    CFG.seed = parseInt(els.seed.value || Date.now(), 10) || Date.now();
-    CFG.pop = parseInt(els.pop.value || 300, 10);
-    const m = els.world.value.match(/^(\d+)\s*[xXx]\s*(\d+)$/);
-    if (m) {
-      CFG.worldW = Math.max(20, Math.min(200, parseInt(m[1], 10)));
-      CFG.worldH = Math.max(20, Math.min(200, parseInt(m[2], 10)));
-    }
-    createSim();
-  });
-  els.speed.addEventListener("input", (e) => {
-    const v = parseInt(e.target.value || 50, 10);
-    msPerTick = 120 - v * 1.1;
-    if (msPerTick < 4) msPerTick = 4;
-    els.speedVal.textContent = v;
-  });
-  els.speed.addEventListener("change", (e) => {
-    const v = parseInt(e.target.value || 50, 10);
-    els.speedVal.textContent = v;
-  });
+      if (els.paused) {
+        els.paused.classList.toggle("hidden", running);
+        els.paused.classList.toggle("show", !running);
+      }
+    });
+  }
+  if (els.step) {
+    els.step.addEventListener("click", () => {
+      if (sim) {
+        try {
+          sim.step();
+        } catch (e) {
+          showError("Simulation error: " + (e && e.message ? e.message : String(e)));
+          return;
+        }
+        updateOrganisms();
+        drawHud();
+        drawInspector();
+      }
+    });
+  }
+  if (els.reset) {
+    els.reset.addEventListener("click", () => {
+      CFG.seed = parseInt(els.seed.value || Date.now(), 10) || Date.now();
+      CFG.pop = parseInt(els.pop.value || 300, 10);
+      const m = els.world.value.match(/^(\d+)\s*[xXx]\s*(\d+)$/);
+      if (m) {
+        CFG.worldW = Math.max(20, Math.min(200, parseInt(m[1], 10)));
+        CFG.worldH = Math.max(20, Math.min(200, parseInt(m[2], 10)));
+      }
+      createSim();
+    });
+  }
+  if (els.speed) {
+    els.speed.addEventListener("input", (e) => {
+      const v = parseInt(e.target.value || 50, 10);
+      msPerTick = 120 - v * 1.1;
+      if (msPerTick < 4) msPerTick = 4;
+      if (els.speedVal) els.speedVal.textContent = v;
+    });
+    els.speed.addEventListener("change", (e) => {
+      const v = parseInt(e.target.value || 50, 10);
+      if (els.speedVal) els.speedVal.textContent = v;
+    });
+  }
 
   // Panel toggles
-  els.chipInspect.addEventListener("click", () => {
-    inspectOpen = !inspectOpen;
-    analyticsOpen = false;
-    els.panelInspect.classList.toggle("open", inspectOpen);
-    els.panelAnalytics.classList.toggle("open", false);
-    els.chipInspect.classList.toggle("active", inspectOpen);
-    els.chipAnalytics.classList.toggle("active", false);
-  });
-  els.chipAnalytics.addEventListener("click", () => {
-    analyticsOpen = !analyticsOpen;
-    inspectOpen = false;
-    els.panelAnalytics.classList.toggle("open", analyticsOpen);
-    els.panelInspect.classList.toggle("open", false);
-    els.chipAnalytics.classList.toggle("active", analyticsOpen);
-    els.chipInspect.classList.toggle("active", false);
-  });
+  if (els.chipInspect) {
+    els.chipInspect.addEventListener("click", () => {
+      inspectOpen = !inspectOpen;
+      analyticsOpen = false;
+      if (els.panelInspect)
+        els.panelInspect.classList.toggle("open", inspectOpen);
+      if (els.panelAnalytics)
+        els.panelAnalytics.classList.toggle("open", false);
+      if (els.chipInspect)
+        els.chipInspect.classList.toggle("active", inspectOpen);
+      if (els.chipAnalytics)
+        els.chipAnalytics.classList.toggle("active", false);
+    });
+  }
+  if (els.chipAnalytics) {
+    els.chipAnalytics.addEventListener("click", () => {
+      analyticsOpen = !analyticsOpen;
+      inspectOpen = false;
+      if (els.panelAnalytics)
+        els.panelAnalytics.classList.toggle("open", analyticsOpen);
+      if (els.panelInspect)
+        els.panelInspect.classList.toggle("open", false);
+      if (els.chipAnalytics)
+        els.chipAnalytics.classList.toggle("active", analyticsOpen);
+      if (els.chipInspect)
+        els.chipInspect.classList.toggle("active", false);
+    });
+  }
 
   // Experiment chip
-  els.chipExperiment.addEventListener("click", async () => {
-    const names = getExperimentNames();
-    const name = prompt("Experiment:\n" + names.join("\n"));
-    if (!name) return;
-    try {
-      const result = runExperiment(name);
-      alert(`${result.name}\nTicks: ${result.ticks}\nPop: ${result.initialStats.population} → ${result.finalStats.population}\nBirths: ${result.finalStats.totalBirths} Deaths: ${result.finalStats.totalDeaths} Colonies: ${result.finalStats.colonyCount}`);
-    } catch (e) {
-      showError("Experiment error: " + (e && e.message ? e.message : String(e)));
-    }
-  });
+  if (els.chipExperiment) {
+    els.chipExperiment.addEventListener("click", async () => {
+      const names = getExperimentNames();
+      const name = prompt("Experiment:\n" + names.join("\n"));
+      if (!name) return;
+      try {
+        const result = runExperiment(name);
+        alert(
+          `${result.name}\nTicks: ${result.ticks}\nPop: ${result.initialStats.population} → ${result.finalStats.population}\nBirths: ${result.finalStats.totalBirths} Deaths: ${result.finalStats.totalDeaths} Colonies: ${result.finalStats.colonyCount}`,
+        );
+      } catch (e) {
+        showError(
+          "Experiment error: " + (e && e.message ? e.message : String(e)),
+        );
+      }
+    });
+  }
 
   // Save chip
-  els.chipSave.addEventListener("click", () => {
-    if (!sim) return;
-    const json = saveToJSON(sim);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `species-save-${CFG.seed}-t${sim.currentTick}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  });
+  if (els.chipSave) {
+    els.chipSave.addEventListener("click", () => {
+      if (!sim) return;
+      const json = saveToJSON(sim);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `species-save-${CFG.seed}-t${sim.currentTick}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
 
   // Load chip
-  els.chipLoad.addEventListener("click", () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const sim2 = loadFromJSON(ev.target.result);
-          sim = sim2;
-          selectedId = null;
-          clearOrganGroups();
-          CFG.seed = sim.simConfig.seed;
-          CFG.pop = sim.organisms.length;
-          els.seed.value = CFG.seed;
-          els.pop.value = CFG.pop;
-          els.world.value = `${sim.simConfig.width}x${sim.simConfig.height}`;
-          els.sysState.textContent = "RUNNING";
-          els.sysState.style.color = "#39ff14";
-          updateInspector(null);
-        } catch (err) {
-          showError("Load error: " + (err && err.message ? err.message : String(err)));
-        }
+  if (els.chipLoad) {
+    els.chipLoad.addEventListener("click", () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json";
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            sim = loadFromJSON(ev.target.result);
+            selectedId = null;
+            clearOrganGroups();
+            CFG.seed = sim.simConfig.seed;
+            CFG.pop = sim.organisms.length;
+            if (els.seed) els.seed.value = CFG.seed;
+            if (els.pop) els.pop.value = CFG.pop;
+            if (els.world)
+              els.world.value = `${sim.simConfig.width}x${sim.simConfig.height}`;
+            if (els.sysState) {
+              els.sysState.textContent = "RUNNING";
+              els.sysState.style.color = "#39ff14";
+            }
+            updateInspector(null);
+            if (els.error) els.error.classList.remove("show");
+          } catch (err) {
+            showError("Load error: " + (err && err.message ? err.message : String(err)));
+          }
+        };
+        reader.readAsText(file);
       };
-      reader.readAsText(file);
-    };
-    input.click();
-  });
+      input.click();
+    });
+  }
 
-  els.errorReset.addEventListener("click", () => {
-    els.error.classList.remove("show");
-    webglFailed = false;
-    running = true;
-    last = performance.now();
-    acc = 0;
-    frame = 0;
-    initThree();
-    if (!webglFailed) {
-      createSim();
-      bindUI();
-    }
-  });
+  if (els.errorReset) {
+    els.errorReset.addEventListener("click", () => {
+      if (els.error) els.error.classList.remove("show");
+      webglFailed = false;
+      running = true;
+      last = performance.now();
+      acc = 0;
+      frame = 0;
+      const ok = initThree();
+      if (ok && !webglFailed) {
+        createSim();
+      }
+    });
+  }
 }
 
 function main() {
+  let ok = false;
   try {
-    initThree();
-    if (!webglFailed) {
-      try { createSim(); } catch (e) {
-        showError("Startup error: " + (e && e.message ? e.message : String(e)));
-        return;
-      }
-      bindUI();
-    } else {
-      bindUI();
-    }
+    ok = initThree();
   } catch (e) {
     showError("Init error: " + (e && e.message ? e.message : String(e)));
-    bindUI();
-    return;
+    ok = false;
   }
+
+  if (ok && !webglFailed) {
+    try {
+      createSim();
+    } catch (e) {
+      showError("Startup error: " + (e && e.message ? e.message : String(e)));
+    }
+  }
+  bindUI();
+
   last = performance.now();
-  requestAnimationFrame((t) => { last = t; animate(t); });
+  requestAnimationFrame((t) => {
+    last = t;
+    animate(t);
+  });
 }
 
 main();
